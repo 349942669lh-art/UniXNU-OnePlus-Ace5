@@ -87,6 +87,41 @@ def main():
     edit(probe,'    wr(0x50, vu_lo(dma_pa));','    if (giulia_take()) return ENXIO;\n    wr(0x50, vu_lo(dma_pa));')
     edit(probe,'            wr(0x50, oldlo);','            if (giulia_restore()) return ENXIO;\n            wr(0x50, oldlo);')
     edit(probe,'0x80058','0xc6058')
+    # Power-down (bCurrentPowerMode 0x33) returns NOT READY on every LU.
+    # This handset has reported both 04/02 and 02/00/00. Wake with the
+    # existing read-only START STOP UNIT Active command to WLUN 0xD0.
+    edit(probe, """    /* The handset explicitly reported NOT READY/04/02: initialization
+     * required. Request Active on device WLUN, never a data-LUN write.
+     */
+    if (rc == 5 && status == 2 && last_sense.key == 2 &&
+        last_sense.asc == 4 && last_sense.ascq == 2) {
+        text(22, "REQUESTING UFS ACTIVE POWER MODE");
+        for (unsigned attempt = 0; attempt < 3; attempt++) {
+            rc = scsi(0x1b, 0, &ocs, &status);
+            result(24 + attempt, "ACTIVE RC/OCS/STATUS: ", rc, ocs, status);
+            hex(27, "ACTIVE RESPONSE/KEY/ASC/Q: ",
+                (uint32_t)last_sense.response << 24 | (uint32_t)last_sense.key << 16 |
+                (uint32_t)last_sense.asc << 8 | last_sense.ascq);
+            if (!(rc == 5 && status == 2 && last_sense.key == 6)) break;
+        }
+        if (rc) goto done;""",
+         """    /* Power-down answers TUR with NOT READY. 04/02 and 02/00/00 are
+     * both that state here. Request Active on device WLUN 0xD0 only.
+     */
+    if (rc == 5 && status == 2 && last_sense.key == 2) {
+        text(21, "UFS NOT READY KEY 2: WAKE WLUN D0");
+        text(22, "REQUESTING UFS ACTIVE POWER MODE");
+        for (unsigned attempt = 0; attempt < 3; attempt++) {
+            rc = scsi(0x1b, 0, &ocs, &status);
+            result(24 + attempt, "ACTIVE RC/OCS/STATUS: ", rc, ocs, status);
+            hex(27, "ACTIVE RESPONSE/KEY/ASC/Q: ",
+                (uint32_t)last_sense.response << 24 | (uint32_t)last_sense.key << 16 |
+                (uint32_t)last_sense.asc << 8 | last_sense.ascq);
+            if (!(rc == 5 && status == 2 && (last_sense.key == 6 || last_sense.key == 2))) break;
+            uint64_t until = ticks() + R("cntfrq_el0") / 10;
+            while (ticks() < until) __asm__ volatile("yield");
+        }
+        if (rc && !(rc == 5 && status == 2 && (last_sense.key == 2 || last_sense.key == 6))) goto done;""")
     edit(block,'    wr(0x50, vu_lo(dma_pa));','    if (giulia_take()) return ENXIO;\n    wr(0x50, vu_lo(dma_pa));')
     edit(block,'    wr(0x50, vb.oldlo);','    if (giulia_restore()) { vb.failed=true; return; }\n    wr(0x50, vb.oldlo);')
     edit(v/'vermeer_media_policy.h','2570304ULL','3920350ULL')
