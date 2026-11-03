@@ -5,11 +5,12 @@ soc = "SM8650"
 description = "OnePlus Ace 5 PKG110"
 kit = "giulia"
 
-# Read-only live GPT of this PKG110 unit, CRC-checked on 2026-10-21.
-# Specific to the connected 256 GB unit; does not authorize flashing userdata.
+# Read-only live GPT of the connected PKG110 unit, measured 2026-11-03.
+# 512 GB: disk last LBA 123801599, userdata 3920350..123801594 (119881245 blocks).
+# The 2026-10-21 256 GB unit ended userdata at 61321210. Does not authorize flashing.
 [userdata]
 first_lba = 3920350
-last_lba = 61321210
+last_lba = 123801594
 lba_bytes = 4096
 windows = [
   { name = "OS", component = "OS" },
