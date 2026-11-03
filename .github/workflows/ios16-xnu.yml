@@ -187,36 +187,29 @@ jobs:
       - name: Select compatible Xcode and dependencies
         run: |
           set -euo pipefail
-          brew install jq gum bash cmake ninja xcodes aria2
-          df -h /
-          sudo rm -rf /Library/Developer/CoreSimulator/Volumes/* /Library/Developer/CoreSimulator/Caches/* || true
-          avail_kb=$(df -k / | awk 'NR==2 {print $4}')
-          echo "available_kb=$avail_kb"
-          if [ "$avail_kb" -lt 40000000 ]; then
-            echo 'Removing preinstalled Xcode 26/27 images to fit Xcode 15 and the KDK'
-            sudo rm -rf /Applications/Xcode_26*.app /Applications/Xcode_27*.app || true
-            df -h /
+          brew install jq gum bash cmake ninja
+          echo 'Installed Xcode applications:'
+          ls -d /Applications/Xcode*.app
+          # Xcode 15.0.1 built the last good kernel, but Apple now requires an
+          # Apple ID to download it. Xcode 16.0 is the closest preinstalled compiler.
+          if [ -d /Applications/Xcode_15.0.1.app ]; then
+            XC=/Applications/Xcode_15.0.1.app
+          elif [ -d /Applications/Xcode_15.0.app ]; then
+            XC=/Applications/Xcode_15.0.app
+          elif [ -d /Applications/Xcode_16.app ]; then
+            XC=/Applications/Xcode_16.app
+          else
+            echo 'No Xcode 15.0 or 16.0 installation found' >&2
+            exit 1
           fi
-          if [ ! -d /Applications/Xcode_15.0.1.app ] && [ ! -d /Applications/Xcode-15.0.1.app ]; then
-            "$(command -v xcodes)" install 15.0.1 --experimental-unxip --empty-trash --no-superuser
-          fi
-          if [ -d /Applications/Xcode-15.0.1.app ] && [ ! -e /Applications/Xcode_15.0.1.app ]; then
-            sudo ln -s /Applications/Xcode-15.0.1.app /Applications/Xcode_15.0.1.app
-          fi
-          if [ -d "$HOME/Applications/Xcode-15.0.1.app" ] && [ ! -e /Applications/Xcode_15.0.1.app ]; then
-            sudo ln -s "$HOME/Applications/Xcode-15.0.1.app" /Applications/Xcode_15.0.1.app
-          fi
-          if [ ! -e /Applications/Xcode_15.0.app ]; then
-            sudo ln -s /Applications/Xcode_15.0.1.app /Applications/Xcode_15.0.app
-          fi
-          XC=/Applications/Xcode_15.0.1.app
           test -d "$XC/Contents/Developer"
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
           sudo xcode-select -s "$XC"
           sudo xcodebuild -license accept || true
           xcodebuild -runFirstLaunch || true
           xcodebuild -version
-          xcodebuild -version | awk 'NR==1 {print $2}' | grep -q '^15\.0'
+          test "$(xcodebuild -version | awk 'NR==1 {print $2}')" != ""
+
       - name: Build kernel
         working-directory: dxb
         run: |
