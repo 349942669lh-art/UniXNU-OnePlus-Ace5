@@ -1,0 +1,121 @@
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -31,6 +31,7 @@
+  */
+ #include "SweetSurface.h"
+ #include "giulia_display.h"
++#include "giulia_fb_perf.h"
+ #include "giulia_display_power.h"
+ 
+ extern "C" int vermeer_console_muted;
+@@ -107,6 +108,8 @@
+ 	IOReturn setDisplayPower(uint64_t requested);
+ 	bool          fDirty;
+ 	uint32_t      fFlushTicks;    /* vsync ticks between panel copies */
++	bool          fPerfEnabled;   /* opt-in aggregate timings, never a sampler */
++	struct gfp_stats fPerf;        /* vsync workloop owns all fields */
+ 
+ 	bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
+ 	void addClient(IOMobileFramebufferUserClient *client);
+@@ -197,6 +200,10 @@
+ 	if(!fDisplayPowerLock)return false;
+ 	fDisplayRegisters=0;fDisplayPowerOff=false;
+ 	bzero(&fDisplayPower,sizeof(fDisplayPower));
++	int perf = 0;
++	PE_parse_boot_argn("sweetfb_perf", &perf, sizeof(perf));
++	fPerfEnabled = perf == 1;
++	bzero(&fPerf, sizeof(fPerf));
+ 	fVsync->setTimeoutUS(SWEET_FB_VSYNC_US);
+ 
+ 	setProperty(kIOUserClientClassKey, "IOMobileFramebufferUserClient");
+@@ -215,6 +222,11 @@
+ {
+ 	AppleCLCD *fb = (AppleCLCD *)owner;
+ 	uint64_t now = mach_absolute_time();
++	uint64_t tick_ns = 0;
++	if (fb->fPerfEnabled) {
++		absolutetime_to_nanoseconds(now, &tick_ns);
++		gfp_tick(&fb->fPerf, tick_ns);
++	}
+ 	uint64_t count = ++fb->fVsyncCount;
+ 	uint64_t values[6] = {
+ 		(uint32_t)count, (uint32_t)(count >> 32),
+@@ -239,8 +251,33 @@
+ 	}
+ 	IOLockUnlock(fb->fLock);
+ 	if (rec != NULL) {
++		uint64_t begin = fb->fPerfEnabled ? mach_absolute_time() : 0;
+ 		fb->present(rec);
++		if (fb->fPerfEnabled) {
++			uint64_t ns = 0;
++			absolutetime_to_nanoseconds(mach_absolute_time() - begin, &ns);
++			gfp_present(&fb->fPerf, ns);
++		}
+ 		IOFreeData(rec, SWEET_FB_SWAP_REC_SIZE);
++	}
++	if (fb->fPerfEnabled) {
++		uint64_t end_ns = 0;
++		absolutetime_to_nanoseconds(mach_absolute_time(), &end_ns);
++		gfp_callback(&fb->fPerf, end_ns - tick_ns);
++		if (gfp_due(&fb->fPerf, end_ns)) {
++			const struct gfp_stats *s = &fb->fPerf;
++			IOLog("GIULIA FBPERF: window_ns=%llu callbacks=%llu intervals=%llu "
++			    "interval_ns=%llu max_interval_ns=%llu present_calls=%llu "
++			    "present_ns=%llu max_present_ns=%llu callback_ns=%llu "
++			    "max_callback_ns=%llu (wall time; not panel FPS or CPU utilization)\n",
++			    (unsigned long long)(end_ns - s->start_ns),
++			    (unsigned long long)s->callbacks, (unsigned long long)s->intervals,
++			    (unsigned long long)s->interval_ns, (unsigned long long)s->max_interval_ns,
++			    (unsigned long long)s->presents, (unsigned long long)s->present_ns,
++			    (unsigned long long)s->max_present_ns, (unsigned long long)s->callback_ns,
++			    (unsigned long long)s->max_callback_ns);
++			gfp_clear(&fb->fPerf);
++		}
+ 	}
+ 	sender->setTimeoutUS(SWEET_FB_VSYNC_US);
+ }
+--- /dev/null
++++ b/iokit/Kernel/arm/giulia_fb_perf.h
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: BSD-2-Clause-Patent
++ * Aggregate wall-clock timings only. All access is on the display workloop.
++ * present() includes capture-lock waits and may skip an off display. These
++ * counters are NOT scanout FPS, exclusive CPU time, or touch latency.
++ * No allocation, per-pixel instrumentation, MMIO or user-data access.
++ */
++#ifndef GIULIA_FB_PERF_H
++#define GIULIA_FB_PERF_H
++/* The including kernel/host translation unit supplies uint64_t. */
++struct gfp_stats {
++    uint64_t start_ns,last_tick_ns,callbacks,intervals,interval_ns,max_interval_ns;
++    uint64_t presents,present_ns,max_present_ns,callback_ns,max_callback_ns;
++};
++static inline void gfp_clear(struct gfp_stats *s)
++{
++    s->start_ns=s->last_tick_ns=s->callbacks=s->intervals=0;
++    s->interval_ns=s->max_interval_ns=s->presents=s->present_ns=0;
++    s->max_present_ns=s->callback_ns=s->max_callback_ns=0;
++}
++static inline void gfp_tick(struct gfp_stats *s,uint64_t now)
++{
++    if (!s->callbacks) s->start_ns=now;
++    else {
++        uint64_t delta=now-s->last_tick_ns;
++        s->intervals++;s->interval_ns+=delta;
++        if(delta>s->max_interval_ns)s->max_interval_ns=delta;
++    }
++    s->last_tick_ns=now;s->callbacks++;
++}
++static inline void gfp_present(struct gfp_stats *s,uint64_t ns)
++{
++    s->presents++;s->present_ns+=ns;
++    if(ns>s->max_present_ns)s->max_present_ns=ns;
++}
++static inline void gfp_callback(struct gfp_stats *s,uint64_t ns)
++{
++    s->callback_ns+=ns;
++    if(ns>s->max_callback_ns)s->max_callback_ns=ns;
++}
++static inline int gfp_due(const struct gfp_stats *s,uint64_t now)
++{return s->callbacks && now-s->start_ns>=5000000000ULL;}
++#endif

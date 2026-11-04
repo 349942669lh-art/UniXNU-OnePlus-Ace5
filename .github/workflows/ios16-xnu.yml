@@ -178,6 +178,9 @@ jobs:
           python3 reference/tools/strict_profile_patches.py dxb/build.sh
           python3 scripts/prepare-ios16.py --reference reference --work profile-source --out profile ${{ inputs.profile == 'gui' && '--gui' || '' }} ${{ inputs.touch && '--touch' || '' }} ${{ inputs.wifi && '--wifi' || '' }} ${{ inputs.gpu && '--gpu' || '' }} ${{ inputs.audio && '--audio' || '' }} ${{ inputs.modem && '--modem' || '' }}
           python3 tests/ios16_terminal_profile.py profile
+          if [ '${{ inputs.profile }}' = gui ]; then
+            python3 tests/ios16_fb_perf.py profile
+          fi
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I profile-source/vermeer tests/ios16_dma.c -o /tmp/dma-test
           /tmp/dma-test
           python3 scripts/make-ios16-adt.py --reference reference --out profile/giulia-ios16.adt
@@ -226,6 +229,7 @@ jobs:
             python3 -c "from pathlib import Path; assert b'GIULIA TOUCH: controller result=' in Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes()"
           fi
           if [ '${{ inputs.profile }}' = gui ]; then
+            python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert b'GIULIA FBPERF: window_ns=' in b and b'sweetfb_perf' in b"
             python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert b'GIULIA DISPLAY POWER: request=' in b and b'GiuliaDisplayPowerFrozen' in b"
             python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert all(m in b for m in (b'GIULIA KEYS: observer polling active',b'GIULIA KEYS: compiled=1',b'GIULIA SLIDER: compiled=1',b'keys.status',b'slider.status'))"
             python3 -c "from pathlib import Path; assert b'GIULIA AMFI: trust catalogue ready;' in Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes()"

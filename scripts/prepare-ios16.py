@@ -220,6 +220,9 @@ def main():
         native_display_patch(a.out, Path(__file__).resolve().parents[1])
         from ios16_display_power import display_power_patch
         display_power_patch(a.out, Path(__file__).resolve().parents[1])
+        # Diagnostic-only timings; default off, no scheduling/rendering changes.
+        shutil.copyfile(Path(__file__).resolve().parents[1]/'ios16/0095-giulia-display-timing.patch',
+                        a.out/'0095-giulia-display-timing.patch')
         from ios16_modules import emit_input_modules
         emit_input_modules(a.out, Path(__file__).resolve().parents[1], touch=a.touch)
         from ios16_modules import emit_optional_modules
@@ -274,6 +277,8 @@ def main():
         'wifi_scope':'PCIe, MHI, QRTR/QMI, CE/HTC/WMI passive scan, IO80211 single-station open/WPA2-CCMP and TCL/REO Ethernet; hardware networking unverified' if a.wifi else None,
         'read_only_trust_catalog_query':a.gui,
         'complete_boot_logging_available':a.gui,
+        'display_timing_available':a.gui,
+        'display_timing_scope':'opt-in aggregate wall-clock timings, not FPS/CPU utilization' if a.gui else None,
         'native_panel':{'width':1264,'height':2780,'stride':5056,
                         'presentation':'full-panel','touch':'full-panel normalized',
                         'uikit_canvas':[1125,2436]} if a.gui else None,

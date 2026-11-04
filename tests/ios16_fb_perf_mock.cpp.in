@@ -1,0 +1,108 @@
+
+#include <cassert>
+#include <cstdlib>
+#include <cstdint>
+#include <cstring>
+#include <cstdarg>
+#include <cstdio>
+#include "giulia_fb_perf.h"
+#define SWEET_FB_SWAP_REC_SIZE 0x46c
+#define SWEET_FB_NOTIFY_VSYNC 5
+#define SWEET_FB_VSYNC_US 16667
+static uint64_t clock_ns=1000000000ULL, present_cost_ns;
+static unsigned allocations,frees,reports,clock_reads;
+static bool fail_alloc;
+static uint64_t mach_absolute_time(){clock_reads++;return clock_ns;}
+static inline void absolutetime_to_nanoseconds(uint64_t n,uint64_t *out){*out=n;}
+static void IOLockLock(void *){}
+static void IOLockUnlock(void *){}
+static void *IOMallocData(size_t n){allocations++;return fail_alloc?nullptr:malloc(n);}
+static void IOFreeData(void *p,size_t){frees++;free(p);}
+static inline void IOLog(const char *,...){reports++;}
+class OSObject {};
+class IOTimerEventSource {
+public:
+    uint64_t deadline_ns=clock_ns;
+    void setTimeoutUS(unsigned us){deadline_ns=clock_ns+uint64_t(us)*1000;}
+};
+class IOMobileFramebufferUserClient {
+public: void notify(unsigned,const uint64_t *,unsigned){}
+};
+class Clients {
+public:
+    IOMobileFramebufferUserClient client;
+    unsigned getCount(){return 1;}
+    OSObject *getObject(unsigned){return reinterpret_cast<OSObject *>(&client);}
+};
+class AppleCLCD : public OSObject {
+public:
+    uint64_t fVsyncCount=0, actual_present_calls=0;
+    void *fLock=nullptr;
+    Clients clients;
+    Clients *fClients=&clients;
+    bool fDirty=true,fPerfEnabled=false;
+    uint32_t fFlushTicks=2;
+    uint8_t fPending[SWEET_FB_SWAP_REC_SIZE]{};
+    struct gfp_stats fPerf{};
+    void present(const uint8_t *p){assert(p);actual_present_calls++;clock_ns+=present_cost_ns;}
+    static void vsyncFired(OSObject *,IOTimerEventSource *);
+};
+/* @DISPLAY_CALLBACK@ */
+
+int main(){
+    // 1. Disabled timings preserve original callback behavior and clock calls.
+    AppleCLCD fb;IOTimerEventSource timer;
+    present_cost_ns=40000000ULL;
+    const uint64_t begin=clock_ns;
+    for(unsigned i=0;i<120;i++){
+        clock_ns=timer.deadline_ns;fb.fDirty=true;
+        AppleCLCD::vsyncFired(&fb,&timer);
+    }
+    assert(fb.actual_present_calls==60 && allocations==60 && frees==60);
+    assert(clock_reads==120 && reports==0);
+    // The final callback has not yet waited its next timeout.
+    assert(clock_ns-begin==119ULL*16667000ULL+60ULL*present_cost_ns);
+    printf("SIMULATION ONLY: calls=60 fake_present_ms=40 measured_span_ns=%llu\n",
+        (unsigned long long)(clock_ns-begin));
+#ifdef TELEMETRY_CANDIDATE
+    // 2. On/idle: no present() samples, aggregate once after >=5 seconds.
+    fb=AppleCLCD();fb.fClients=&fb.clients;fb.fDirty=false;fb.fPerfEnabled=true;
+    timer=IOTimerEventSource();const unsigned old_reports=reports;
+    for(unsigned i=0;i<302;i++){
+        clock_ns=timer.deadline_ns;AppleCLCD::vsyncFired(&fb,&timer);
+    }
+    assert(fb.actual_present_calls==0 && reports==old_reports+1);
+    // 3. On/busy: exact present cost, no logging below window threshold.
+    fb=AppleCLCD();fb.fClients=&fb.clients;fb.fPerfEnabled=true;
+    timer=IOTimerEventSource();present_cost_ns=20000000ULL;
+    const unsigned before_reports=reports;
+    for(unsigned i=0;i<20;i++){
+        clock_ns=timer.deadline_ns;fb.fDirty=true;
+        AppleCLCD::vsyncFired(&fb,&timer);
+    }
+    assert(fb.fPerf.callbacks==20 && fb.fPerf.intervals==19);
+    assert(fb.fPerf.presents==10 && fb.fPerf.present_ns==200000000ULL);
+    assert(fb.fPerf.max_present_ns==20000000ULL);
+    assert(fb.fPerf.max_interval_ns==36667000ULL);
+    assert(fb.fPerf.callback_ns==fb.fPerf.present_ns);
+    assert(reports==before_reports);
+    // 4. Failed allocation: do not lose pending record or count a present.
+    fb=AppleCLCD();fb.fClients=&fb.clients;fb.fVsyncCount=1;
+    fb.fPerfEnabled=true;fail_alloc=true;
+    const unsigned old_frees=frees;
+    AppleCLCD::vsyncFired(&fb,&timer);
+    assert(fb.fDirty && fb.fPerf.presents==0 && frees==old_frees);
+    fail_alloc=false;
+    // 5. Disabled again: no extra timing reads or diagnostic output.
+    fb=AppleCLCD();fb.fClients=&fb.clients;fb.fVsyncCount=1;
+    const unsigned before_reads=clock_reads,before_logs=reports;
+    AppleCLCD::vsyncFired(&fb,&timer);
+    assert(clock_reads==before_reads+1 && reports==before_logs);
+    // 6. Exact boundary and reset (timestamps may legitimately be zero).
+    gfp_stats s{};gfp_tick(&s,0);gfp_tick(&s,1);
+    assert(!gfp_due(&s,4999999999ULL) && gfp_due(&s,5000000000ULL));
+    gfp_clear(&s);assert(!s.callbacks && !s.presents && !s.interval_ns);
+    gfp_tick(&s,99);assert(s.start_ns==99 && !s.intervals);
+#endif
+    puts("PASS: actual extracted callback in deterministic HOST mocks; not device performance");
+}
