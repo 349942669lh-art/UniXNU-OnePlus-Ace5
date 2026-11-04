@@ -118,6 +118,8 @@ public:
     IOLock *runtimeLock=&lock;
     bool workerRunning=true,stopping=false,terminalOwner=true;
     unsigned mode=1,reservationCount=5,tablePages=6,leafPages=104,observations=0;
+    bool hostOnly=false;
+    std::atomic<unsigned> devCalls{0},periodicCalls{0},gmuCalls{0};
     bool firmwareVerified=true,hostPrepared=true;
     bool bootGunyahCaptured=false;
     bool manualMemoryPinned=false,platformPoisoned=false,fenceMapped=false;
@@ -199,11 +201,11 @@ public:
         powerObservation.valid_fields=7;++observations;--inObservation;
     }
     void releaseResources(){assert(!inObservation);if(!manualMemoryPinned)++released;}
-    void devCommand(const uint32_t *){}
-    void gunyahPeriodic(){}
+    void devCommand(const uint32_t *){++devCalls;}
+    void gunyahPeriodic(){++periodicCalls;}
     void stopGunyah(){}
     void hfiCommand(unsigned);
-    int gmuCommand(unsigned){return 1;} /* IOKit + SID5 prerequisites absent */
+    int gmuCommand(unsigned){++gmuCalls;return 1;} /* IOKit + SID5 prerequisites absent */
     void reportStatus();void closeTerminal(unsigned);void stop(IOService *);
     static void worker(void *,wait_result_t);
 };
@@ -372,6 +374,40 @@ int main() {
     eighth.mode=3;
     assert(eighth.shareCommand()==GGSR_ARGUMENT);
     assert(eighth.shareRuntime.live_checks==0 && eighth.shareRuntime.authority_checks==0);
+    /* Host-only qualification must reject every hardware-side terminal bit,
+     * including observe (a register read can fault), and the raw DEV mailbox.
+     * Actual worker source is executed; no real MMIO is used in this fixture. */
+    GiuliaGPU isolated;
+    isolated.hostOnly=true;
+    isolated.allowObservation=true;
+    isolated.bootGunyahCaptured=true;
+    isolated.stackInit();
+    assert(gg_terminal_open(&gpuTerminal));
+    unsigned before=statuses.load();
+    for(unsigned bit=1;bit<=GGT_SHARE;bit<<=1)
+        if(bit&GGT_COMMANDS)assert(gg_terminal_request(&gpuTerminal,bit));
+    devArgs[0]=123;
+    __atomic_store_n(&devState,2u,__ATOMIC_RELEASE);
+    std::thread qualification(GiuliaGPU::worker,&isolated,0);
+    until([&]{return statuses.load()>before;});
+    IOLockLock(isolated.runtimeLock);
+    assert(isolated.stackState.writes==0 && isolated.stackState.blocked==GGSK_HOST_MEMORY);
+    assert(isolated.stackState.entered_mask==(GGSK_BIT(GGSK_BOOT)|GGSK_BIT(GGSK_FIRMWARE)));
+    IOLockUnlock(isolated.runtimeLock);
+    isolated.stop(nullptr);qualification.join();
+    assert(isolated.devCalls==0 && isolated.gmuCalls==0 && isolated.periodicCalls==0);
+    assert(!isolated.entered && isolated.observations==0 && !isolated.manualMemoryPinned);
+    assert(isolated.hfiSequence==0 && isolated.hfiPump.received==0);
+    assert(isolated.shareRuntime.prepared==0 && isolated.shareRuntime.authority_checks==0);
+    assert(isolated.stackState.writes==0 && isolated.stackState.entered_mask==0); // stop unwinds RO stages
+    assert(__atomic_load_n(&devState,__ATOMIC_ACQUIRE)==4u);
+    bool sawDevRejected=false,sawRequestsRejected=false;
+    for(const auto &line:logs) {
+        if(line.find("hostonly=1 rejected_dev_token=123 device_dispatch=0")!=std::string::npos)sawDevRejected=true;
+        if(line.find("hostonly=1 rejected_requests=")!=std::string::npos)sawRequestsRejected=true;
+    }
+    assert(sawDevRejected && sawRequestsRejected);
+    puts("Host-only isolation: raw DEV and every non-status/stack command blocked; no periodic GPU worker dispatched (host fixtures only)");
     puts("Production GPU worker/status/stop: mode gating, queued requests, observation-stop ordering and retained lifetime passed");
 }
 '''
@@ -379,7 +415,7 @@ with tempfile.TemporaryDirectory() as folder:
     directory=Path(folder)
     test=directory/'service.cpp';test.write_text(fixture)
     binary=directory/'service'
-    subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-Wall','-Wextra','-Werror',
+    subprocess.run([os.environ.get('CXX','c++'),'-x','c++','-std=c++17','-Wall','-Wextra','-Werror',
                     '-fsanitize=address,undefined','-pthread','-DGG_HOST_TEST',
                     '-DGG_GUNYAH_SHARE_STANDALONE',*include_flags(ROOT),
                     str(test),str(ROOT / 'ios16/gpu/giulia_gpu_stack.c'),

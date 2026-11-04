@@ -108,6 +108,7 @@ public:
     IOLock lock;IOLock *runtimeLock=&lock;
     bool workerRunning=false,stopping=false,terminalOwner=false;
     unsigned mode=1,firmwarePowerState=0,observations=0;
+    bool hostOnly=false;
     struct {unsigned stage=0,valid_fields=0;} powerObservation;
     std::atomic<unsigned> references{1},releaseCalls{0},resourceAttempts{0},resourcesFreed{0};
     void retain(){assert(!gunyahOwner && !gunyahPinned);++references;}

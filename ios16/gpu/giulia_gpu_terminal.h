@@ -13,6 +13,11 @@ enum { GGT_HFI_PIN=16, GGT_HFI_STATUS=32, GGT_HFI_QUERY=64,
     GGT_COMMANDS=GGT_STATUS|GGT_OBSERVE|GGT_HFI_PIN|GGT_HFI_STATUS|GGT_HFI_QUERY|GGT_HFI_POLL|GGT_HFI_LOG|GGT_GMU_COMMANDS|GGT_STACK|GGT_SHARE };
 enum { GGT_UNAVAILABLE, GGT_PREPARING, GGT_READY, GGT_STOPPING, GGT_STOPPED, GGT_FAILED };
 struct gg_terminal_mailbox { unsigned requests, stage, mode; };
+/* A qualification boot must not silently combine host-only and MMIO modes. */
+static inline int gg_terminal_hostonly_valid(int mode,int isolation)
+{
+    return mode>=1 && mode<=3 && (isolation==0 || (isolation==1 && mode==1));
+}
 static inline int gg_terminal_equal(const char *a,const char *b)
 {
     if(!a)return 0;

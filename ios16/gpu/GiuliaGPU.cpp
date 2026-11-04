@@ -5,6 +5,9 @@
  * Automatic startup only prepares memory. Explicit debug ABI2 operations may
  * assign isolated secure memory, configure its context, call SCM/PAS and watch
  * bounded command submission. No accelerator is automatically published.
+ * giulia_gpu_hostonly=1 is an additional isolation latch (requires mode 1):
+ * only status/stack planning are dispatched; device commands and periodic
+ * hardware-side workers are suppressed for firmware/RAM qualification boots.
  */
 #include <pexpert/arm64/board_config.h>
 #if defined(ARM64_BOARD_CONFIG_SWEET)
@@ -176,6 +179,7 @@ class GiuliaGPU : public IOService {
     IOLock *runtimeLock;
     bool workerRunning, stopping, terminalOwner;
     unsigned mode, reservationCount, tablePages, leafPages, observations;
+    bool hostOnly;
     bool firmwareVerified, hostPrepared;
     bool manualMemoryPinned;
     unsigned hfiIndex,hfiSequence,hfiLastHeader;
@@ -270,6 +274,7 @@ OSDefineMetaClassAndStructors(GiuliaGPU, IOService)
 
 bool GiuliaGPU::init(OSDictionary *dictionary)
 {
+    hostOnly=false;
     firmwareMemory=NULL; firmwareMap=NULL; tableMemory=NULL;
     gpuTableMemory=NULL;gmuRoot=gpuRoot=0;
     memstoreMemory=NULL;memstoreFlags=0;memstoreMapped=false;
@@ -588,6 +593,10 @@ bool GiuliaGPU::start(IOService *provider)
 {
     int requested=0;
     if (!PE_parse_boot_argn("giulia_gpu",&requested,sizeof(requested)) || requested<1 || requested>3) return false;
+    int isolation=0;
+    PE_parse_boot_argn("giulia_gpu_hostonly",&isolation,sizeof(isolation));
+    if(!gg_terminal_hostonly_valid(requested,isolation))return false;
+    hostOnly=isolation==1;
     IORegistryEntry *root=IORegistryEntry::fromPath("/",gIODTPlane);
     if (!root) return false;
     OSData *model=OSDynamicCast(OSData,root->getProperty("physical-model"));
@@ -611,6 +620,8 @@ bool GiuliaGPU::start(IOService *provider)
     }
     setProperty("GPUChipID",(unsigned long long)0x43051401,32);
     setProperty("GPUModel","Adreno750v2"); setProperty("HardwareReady",false);
+    setProperty("HostOnlyIsolation",hostOnly);
+    IOLog("GIULIA GPU: hostonly=%u mode=%u acceleration=0\n",hostOnly,mode);
     setProperty("BringupStage","host-memory-prepared");
     /* Pool adapter only: it establishes no mapping and performs no device
      * write until the worker is pinned and the platform is healthy. */
@@ -799,20 +810,28 @@ void GiuliaGPU::worker(void *cookie,wait_result_t)
     self->gunyahWorker=current_thread();
     if(!self->stopping) {
         __atomic_store_n(&gpuTerminal.stage,(unsigned)GGT_READY,__ATOMIC_RELEASE);
-        if(self->mode==2 || (self->mode==3 && self->firmwarePowerState==GGPH_PREPARED))self->observePower();
+        if(!self->hostOnly && (self->mode==2 || (self->mode==3 && self->firmwarePowerState==GGPH_PREPARED)))self->observePower();
     }
     while(!self->stopping) {
         if(__atomic_load_n(&devState,__ATOMIC_ACQUIRE)==2) {
             uint32_t args[6];memcpy(args,devArgs,sizeof(args));
-            self->devCommand(args);__atomic_store_n(&devState,0u,__ATOMIC_RELEASE);
+            if(self->hostOnly)
+                IOLog("GIULIA GPU: hostonly=1 rejected_dev_token=%u device_dispatch=0\n",args[0]);
+            else self->devCommand(args);
+            __atomic_store_n(&devState,0u,__ATOMIC_RELEASE);
         }
         unsigned requests=gg_terminal_take(&gpuTerminal);
+        if(self->hostOnly) {
+            unsigned rejected=requests&~(GGT_STATUS|GGT_STACK);
+            if(rejected)IOLog("GIULIA GPU: hostonly=1 rejected_requests=%#x device_dispatch=0\n",rejected);
+            requests&=GGT_STATUS|GGT_STACK;
+        }
         if(requests&GGT_GMU_LOAD)self->gmuCommand(1);
         if(requests&GGT_GMU_START)self->gmuCommand(2);
         if(requests&GGT_GMU_STATUS)self->gmuCommand(0);
         if(requests&GGT_STACK)self->stackPlan();
         if(requests&GGT_SHARE)self->shareCommand();
-        if(requests&(GGT_COMMANDS&~(GGT_STATUS|GGT_OBSERVE|GGT_GMU_COMMANDS)))self->hfiCommand(requests);
+        if(!self->hostOnly && (requests&(GGT_COMMANDS&~(GGT_STATUS|GGT_OBSERVE|GGT_GMU_COMMANDS))))self->hfiCommand(requests);
         if(requests&GGT_OBSERVE) {
             IOLog("GIULIA GPU: command=gpu.observe phase=begin device_writes=0\n");
             self->observePower();
@@ -820,10 +839,10 @@ void GiuliaGPU::worker(void *cookie,wait_result_t)
                 self->observations,self->powerObservation.stage,self->powerObservation.valid_fields);
         }
         if(requests&(GGT_STATUS|GGT_OBSERVE))self->reportStatus();
-        self->gunyahPeriodic();
+        if(!self->hostOnly)self->gunyahPeriodic();
         /* Answer firmware memory requests only while pinned and healthy. The
          * pump is bounded and never retries a refused or unsent reply. */
-        self->hfiPumpOnce(2);
+        if(!self->hostOnly)self->hfiPumpOnce(2);
         IOLockUnlock(self->runtimeLock);IOSleep(25);IOLockLock(self->runtimeLock);
     }
     self->workerRunning=false;
