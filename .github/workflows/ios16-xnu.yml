@@ -67,6 +67,7 @@ jobs:
       - name: Prepare pinned Wi-Fi host test dependencies
         env:
           BEARSSL_PIN: 7bea48e5e850ab4cafbe68d3765cdaba13a86d6f
+          BEARSSL_TREE: a8f933a27b14eaf3a348fe9b294bf4262dbb216c
         run: |
           set -euo pipefail
           brew install openssl@3
@@ -76,9 +77,17 @@ jobs:
           echo "WIFI_HOST_OPENSSL_PREFIX=$openssl_prefix" >> "$GITHUB_ENV"
           mkdir -p .cache/wifi-sae-bearssl
           git init -q .cache/wifi-sae-bearssl
-          git -C .cache/wifi-sae-bearssl fetch -q --depth 1 https://www.bearssl.org/git/BearSSL "$BEARSSL_PIN"
+          # One bounded fallback; never substitute a branch tip or a different version.
+          if ! git -C .cache/wifi-sae-bearssl -c fetch.fsckObjects=true fetch -q --depth 1 https://www.bearssl.org/git/BearSSL "$BEARSSL_PIN"; then
+            git -C .cache/wifi-sae-bearssl -c fetch.fsckObjects=true fetch -q --depth 1 https://github.com/status-im/BearSSL "$BEARSSL_PIN"
+          fi
           git -C .cache/wifi-sae-bearssl checkout -q --detach FETCH_HEAD
           test "$(git -C .cache/wifi-sae-bearssl rev-parse HEAD)" = "$BEARSSL_PIN"
+          test "$(git -C .cache/wifi-sae-bearssl rev-parse 'HEAD^{tree}')" = "$BEARSSL_TREE"
+          git -C .cache/wifi-sae-bearssl fsck --strict
+          # The later, unchanged 0020 staging script fetches this same commit.
+          # Reuse only the verified objects via a runner-local URL rewrite.
+          git config --global url."file://$GITHUB_WORKSPACE/.cache/wifi-sae-bearssl".insteadOf https://www.bearssl.org/git/BearSSL
           echo "BEARSSL_SOURCE=$GITHUB_WORKSPACE/.cache/wifi-sae-bearssl" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         if: ${{ inputs.modem }}
