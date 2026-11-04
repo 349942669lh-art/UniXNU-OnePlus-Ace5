@@ -18,7 +18,11 @@ extern void ggh_hvc_test_invoke(struct ggh_hvc_regs *);
 extern void ggh_hvc_test_doorbell_invoke(struct ggh_hvc_regs *);
 /* Standalone fixtures that only exercise MSGQ/doorbell need no new symbol.
  * An absent probe hook fails closed and can never reach a native HVC. */
+#if defined(__APPLE__)
+extern void ggh_hvc_test_probe_invoke(struct ggh_hvc_regs *) __attribute__((weak_import));
+#else
 extern void ggh_hvc_test_probe_invoke(struct ggh_hvc_regs *) __attribute__((weak));
+#endif
 static void ggh_hvc_native(struct ggh_hvc_regs *r) { ggh_hvc_test_invoke(r); }
 static void ggh_hvc_doorbell_native(struct ggh_hvc_regs *r)
 { ggh_hvc_test_doorbell_invoke(r); }
