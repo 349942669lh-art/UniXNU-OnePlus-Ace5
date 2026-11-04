@@ -13,12 +13,16 @@ static uint64_t clock_ns=1000000000ULL, present_cost_ns;
 static unsigned allocations,frees,reports,clock_reads;
 static bool fail_alloc;
 static uint64_t mach_absolute_time(){clock_reads++;return clock_ns;}
+#ifdef TELEMETRY_CANDIDATE
 static inline void absolutetime_to_nanoseconds(uint64_t n,uint64_t *out){*out=n;}
+#endif
 static void IOLockLock(void *){}
 static void IOLockUnlock(void *){}
 static void *IOMallocData(size_t n){allocations++;return fail_alloc?nullptr:malloc(n);}
 static void IOFreeData(void *p,size_t){frees++;free(p);}
+#ifdef TELEMETRY_CANDIDATE
 static inline void IOLog(const char *,...){reports++;}
+#endif
 class OSObject {};
 class IOTimerEventSource {
 public:
