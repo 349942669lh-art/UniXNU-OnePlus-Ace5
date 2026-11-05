@@ -23,7 +23,8 @@ typedef uint64_t IOByteCount;
 typedef uint32_t IOOptionBits;
 enum { kIODirectionInOut = 3, kIODirectionIn = 1,
        kIOMapInhibitCache = 0x100, kIOMapReadOnly = 0x200 };
-struct IOMemoryMap { void *getVirtualAddress(); };
+// IOKit exposes an integer IOVirtualAddress, not a pointer.
+struct IOMemoryMap { uintptr_t getVirtualAddress(); };
 struct IOBufferMemoryDescriptor {
     void *getBytesNoCopy();
 };

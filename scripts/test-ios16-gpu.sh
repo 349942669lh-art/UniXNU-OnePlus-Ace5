@@ -19,6 +19,7 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -pthread \
 "$tmp/terminal"
 python3 tests/ios16_gpu_terminal_profile.py
 python3 tests/ios16_gpu_service.py
+python3 tests/ios16_gpu_service_layout.py
 python3 tests/ios16_gpu_platform_runtime.py
 python3 tests/ios16_gpu_mapping_runtime.py
 python3 tests/ios16_gpu_dev_runtime.py

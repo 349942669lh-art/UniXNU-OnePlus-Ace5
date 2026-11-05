@@ -23,8 +23,8 @@ static enum gg_resource_result acquire(void *p,unsigned id,uint32_t value,uint64
 {
     struct power_peer *f=p; ++f->acquires;
     assert(value==(id==GGR_GMU_RATE?625000000u:id==GGR_HUB_RATE?200000000u:1));
-    if(f->fail==id+1) return f->uncertain?GGR_UNCERTAIN:GGR_UNCHANGED_ERROR;
-    f->held|=1u<<id; *token=id+100;return GGR_OK;
+    if(f->fail==id+1) return f->uncertain?GGRC_UNCERTAIN:GGRC_UNCHANGED_ERROR;
+    f->held|=1u<<id; *token=id+100;return GGRC_OK;
 }
 static int release(void *p,unsigned id,uint64_t token)
 {

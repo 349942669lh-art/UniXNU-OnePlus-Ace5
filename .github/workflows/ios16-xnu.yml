@@ -227,6 +227,26 @@ jobs:
         run: |
           set -o pipefail
           bash build.sh 2>&1 | tee ../xnu-build.log
+      - name: Report native compiler errors
+        if: ${{ failure() }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log = Path('xnu-build.log')
+          if log.is_file():
+              count = 0
+              with log.open(errors='replace') as stream:
+                  for line in stream:
+                      if not re.search(r'\b(?:fatal )?error:', line):
+                          continue
+                      count += 1
+                      if count <= 20:
+                          line = re.sub(r'\x1b\[[0-9;]*m', '', line).strip()[:1200]
+                          line = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                          print('::error title=XNU compiler diagnostic::' + line)
+              print(f'Native compiler diagnostic lines: {count}; complete output is in xnu-build.log')
+          PY
       - name: Verify linked services
         run: |
           python3 profile/check-kernel.py dxb/fakeroot/System/Library/Kernels/kernel.development.sweet ${{ inputs.profile == 'gui' && '--gui' || '' }}

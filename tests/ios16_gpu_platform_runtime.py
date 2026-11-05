@@ -8,7 +8,11 @@ import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[1]
 source=(ROOT/'ios16/gpu/GiuliaGPU.cpp').read_text()
-members=source[source.index('    IOBufferMemoryDescriptor *secureData'):source.index('    bool prepareDevMemory')]
+members=source[source.index('    IOBufferMemoryDescriptor **secureData'):source.index('    bool prepareDevMemory')]
+# The mapping fixture owns ordinary RAM records; allocation/failure/retention
+# of the actual service's heap records is covered by ios16_gpu_service_layout.
+members=members.replace('**secureData;', '**secureData=fixtureSecureData;')
+members=members.replace('*securePA,', '*securePA=fixtureSecurePA,')
 fixture=r'''
 #define GG_HOST_TEST 1
 #include <cassert>
@@ -99,6 +103,8 @@ static int ggs_aarch64_call(void *,struct ggs_regs *r) {
 }
 class GiuliaGPU {
 public:
+    IOBufferMemoryDescriptor *fixtureSecureData[GGS_SEC_SEGMENTS]={};
+    uint64_t fixtureSecurePA[GGS_SEC_SEGMENTS]={};
 '''+members+r'''
     bool manualMemoryPinned=true;unsigned mode=3;uint64_t gpuRoot=0x870000000ull;
     IOBufferMemoryDescriptor *firmwareMemory=nullptr,*allocations[8]={};IOMemoryMap *firmwareMap=nullptr;

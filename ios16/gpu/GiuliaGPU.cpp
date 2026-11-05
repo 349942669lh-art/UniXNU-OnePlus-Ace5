@@ -52,11 +52,19 @@ extern "C" { extern unsigned long gPhysBase, gPhysSize, gVirtBase; }
 #include "giulia_gpu_share_runtime.h"
 #include "../vendor/ArmSmmu4K/ArmSmmu4K.h"
 
+/* Host bookkeeping is separate from the IOService's 16 KiB allocation. These
+ * records neither allocate secure backing nor grant any device ownership. */
+struct gpu_secure_metadata {
+    IOBufferMemoryDescriptor *descriptors[GGS_SEC_SEGMENTS];
+    uint64_t physical[GGS_SEC_SEGMENTS];
+};
+
 static struct gg_terminal_mailbox gpuTerminal;
 static unsigned devState;
 static uint32_t devArgs[6];
 static struct ggi_owner gpuIpcOwner;
 static struct ggf_registration gpuFenceProvider;
+static void gpuHfiBarrier(void *);
 extern "C" int giulia_gpu_fence_register(const struct ggf_provider *p)
 { return ggfp_register(&gpuFenceProvider,p); }
 extern "C" int giulia_gpu_fence_ipcc_claim(const void *identity,uint64_t epoch)
@@ -134,10 +142,14 @@ class GiuliaGPU : public IOService {
     int memstoreAllocate(uint32_t,uint32_t,uint32_t,uint32_t);
     int memstoreRead(uint32_t);
     int auditMemstoreMappings();
-    IOBufferMemoryDescriptor *secureData[GGS_SEC_SEGMENTS],*secureTables,*scmMemory,*zapMetadata;
+    IOBufferMemoryDescriptor **secureData;
+    struct gpu_secure_metadata *secureMetadata;
+    bool allocateSecureMetadata();
+    void releaseSecureMetadata();
+    IOBufferMemoryDescriptor *secureTables,*scmMemory,*zapMetadata;
     IOMemoryDescriptor *platformMemory[4],*zapMemory;
     IOMemoryMap *platformMaps[4],*zapMap;
-    uint64_t securePA[GGS_SEC_SEGMENTS],secureRoot,scmPA,zapMetadataPA;
+    uint64_t *securePA,secureRoot,scmPA,zapMetadataPA;
     struct ggs_secure_slot secureSlots[GGS_SEC_CHUNKS];
     struct ggs_state scmState;
     bool platformPrepared,platformOwned,platformPoisoned,secureContextActive,zapAuthenticated;
@@ -272,6 +284,25 @@ public:
 };
 OSDefineMetaClassAndStructors(GiuliaGPU, IOService)
 
+bool GiuliaGPU::allocateSecureMetadata()
+{
+    if(secureMetadata || secureData || securePA)return false;
+    struct gpu_secure_metadata *records=(struct gpu_secure_metadata *)IOMalloc(sizeof(*records));
+    if(!records)return false;
+    bzero(records,sizeof(*records));
+    secureMetadata=records;secureData=records->descriptors;securePA=records->physical;
+    return true;
+}
+
+void GiuliaGPU::releaseSecureMetadata()
+{
+    /* Match releaseResources: uncertain device ownership retains bookkeeping
+     * as well as the underlying mappings until reset. */
+    if(!secureMetadata || manualMemoryPinned)return;
+    IOFree(secureMetadata,sizeof(*secureMetadata));
+    secureMetadata=NULL;secureData=NULL;securePA=NULL;
+}
+
 bool GiuliaGPU::init(OSDictionary *dictionary)
 {
     hostOnly=false;
@@ -280,7 +311,7 @@ bool GiuliaGPU::init(OSDictionary *dictionary)
     memstoreMemory=NULL;memstoreFlags=0;memstoreMapped=false;
     ipcMapped=false;ipcFlags=0;
     fenceMapped=false;fenceFlags=0;fenceProvider=NULL;
-    bzero(secureData,sizeof(secureData));bzero(securePA,sizeof(securePA));bzero(secureSlots,sizeof(secureSlots));
+    secureMetadata=NULL;secureData=NULL;securePA=NULL;bzero(secureSlots,sizeof(secureSlots));
     bzero(platformMemory,sizeof(platformMemory));bzero(platformMaps,sizeof(platformMaps));bzero(&scmState,sizeof(scmState));
     secureTables=scmMemory=zapMetadata=NULL;zapMemory=NULL;zapMap=NULL;
     secureRoot=scmPA=zapMetadataPA=0;platformEpoch=platformSnapshotSequence=0;
@@ -311,7 +342,7 @@ bool GiuliaGPU::init(OSDictionary *dictionary)
     /* Process-context bootstrap; IRQ/fence ownership queries never allocate. */
     if(gpr_global_initialize()!=GPR_OK)return false;
 #endif
-    runtimeLock=IOLockAlloc();return runtimeLock!=NULL;
+    runtimeLock=IOLockAlloc();return runtimeLock && allocateSecureMetadata();
 }
 
 static bool gpuFirmwareError(unsigned code,uint64_t at,const char *reason,uint64_t expected,uint64_t observed)
@@ -874,7 +905,7 @@ void GiuliaGPU::releaseResources()
     for(unsigned i=0;i<GGD_CHUNKS;i++)OSSafeReleaseNULL(devMemory[i]);
     /* manualMemoryPinned retains every resource before an ownership/PAS call.
      * No ambiguous secure page is ever returned to the ordinary allocator. */
-    for(unsigned i=0;i<GGS_SEC_SEGMENTS;i++)OSSafeReleaseNULL(secureData[i]);
+    if(secureData)for(unsigned i=0;i<GGS_SEC_SEGMENTS;i++)OSSafeReleaseNULL(secureData[i]);
     OSSafeReleaseNULL(secureTables);OSSafeReleaseNULL(scmMemory);OSSafeReleaseNULL(zapMetadata);
     OSSafeReleaseNULL(zapMap);OSSafeReleaseNULL(zapMemory);
     for(unsigned i=0;i<4;i++){OSSafeReleaseNULL(platformMaps[i]);OSSafeReleaseNULL(platformMemory[i]);}
@@ -911,6 +942,7 @@ void GiuliaGPU::free()
     /* A running worker holds a retain. stop has joined it before releasing
      * resources; failed starts never leave a worker or an open mailbox. */
     releaseResources();
+    releaseSecureMetadata();
     if(terminalOwner){gg_terminal_finish(&gpuTerminal);terminalOwner=false;}
     if(runtimeLock){IOLockFree(runtimeLock);runtimeLock=NULL;}
     IOService::free();

@@ -10,7 +10,7 @@
  */
 enum gg_resource { GGR_CX, GGR_GMU_RATE, GGR_HUB_RATE, GGR_GMU_CLK, GGR_CXO_CLK,
     GGR_AXI_CLK, GGR_MEMNOC_CLK, GGR_AHB_CLK, GGR_HUB_CLK, GGR_SMMU_CLK, GGR_COUNT };
-enum gg_resource_result { GGR_OK, GGR_UNCHANGED_ERROR, GGR_UNCERTAIN };
+enum gg_resource_result { GGRC_OK, GGRC_UNCHANGED_ERROR, GGRC_UNCERTAIN };
 struct gg_power_ops {
     void *cookie;
     int (*resolve)(void *); /* All provider ABIs, resources and board policy; no mutation. */
@@ -71,12 +71,12 @@ static inline int gg_power_acquire(const struct gg_power_ops *o,struct gg_power_
         gg_record_full(&s->diag,o->trace,o->cookie,GGD_POWER,i,GGD_ACQUIRE,0,value,0,GGD_EXPECTED|GGD_NATIVE,0,e?GGC_PROVIDER:0,e,0);
         if (token) { s->tokens[i]=token; s->held|=1u<<i; }
         /* Ambiguous mutations must never trigger optimistic power removal. */
-        if ((e!=GGR_OK && e!=GGR_UNCHANGED_ERROR) || (e==GGR_OK && !token) ||
-            (e==GGR_UNCHANGED_ERROR && token)) {
+        if ((e!=GGRC_OK && e!=GGRC_UNCHANGED_ERROR) || (e==GGRC_OK && !token) ||
+            (e==GGRC_UNCHANGED_ERROR && token)) {
             gg_record(&s->diag,o->trace,o->cookie,GGD_POWER,i,GGD_VALIDATE,0,0,0,0,GGC_PROVIDER,0);
             s->quarantined=1; return s->error=GGC_PROVIDER;
         }
-        if (e!=GGR_OK) { s->error=GGC_PROVIDER; (void)gg_power_release(o,s); return s->error; }
+        if (e!=GGRC_OK) { s->error=GGC_PROVIDER; (void)gg_power_release(o,s); return s->error; }
     }
     s->stage=GGR_COUNT;
     for (i=0;i<1000;++i) {

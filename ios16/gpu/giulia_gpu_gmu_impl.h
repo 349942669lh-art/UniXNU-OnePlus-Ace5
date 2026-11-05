@@ -93,7 +93,7 @@ int GiuliaGPU::gmuRamMatches(void *cookie,uint32_t address,const uint8_t *data,s
     blocks=(struct gg_fw_block *)IOMalloc(sizeof(*blocks)*GG_FW_MAX_BLOCKS);
     plan=(struct gg_reservation *)IOMalloc(sizeof(*plan)*GG_FW_MAX_BLOCKS);
     if(blocks && plan &&
-       gg_pack_open(self->firmwareMap->getVirtualAddress(),GG_FIRMWARE_PACK_BYTES,&pack) &&
+       gg_pack_open((const void *)self->firmwareMap->getVirtualAddress(),GG_FIRMWARE_PACK_BYTES,&pack) &&
        gg_fw_plan(pack.asset[0].data,pack.asset[0].size,blocks,GG_FW_MAX_BLOCKS,&count)==GG_FW_OK &&
        gg_memory_plan(blocks,count,plan,GG_FW_MAX_BLOCKS,&reservations)==GG_FW_OK) {
         for(size_t i=0;i<reservations && i<GG_FW_MAX_BLOCKS;i++) {
@@ -178,7 +178,7 @@ int GiuliaGPU::gmuCommand(unsigned action)
             IOLog("GIULIA GPU GMU: command=load rejected reason=smmu-inactive (SID 5 translation is a prerequisite)\n");
             return 1;
         }
-        if(!gg_pack_open(firmwareMap->getVirtualAddress(),GG_FIRMWARE_PACK_BYTES,&pack)) {
+        if(!gg_pack_open((const void *)firmwareMap->getVirtualAddress(),GG_FIRMWARE_PACK_BYTES,&pack)) {
             IOLog("GIULIA GPU GMU: command=load rejected reason=pack-open\n");
             return 1;
         }
