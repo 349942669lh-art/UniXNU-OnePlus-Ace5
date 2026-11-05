@@ -9,7 +9,11 @@
  * Board voltage corners and parent clocks remain the provider's responsibility.
  */
 enum gg_resource { GGR_CX, GGR_GMU_RATE, GGR_HUB_RATE, GGR_GMU_CLK, GGR_CXO_CLK,
-    GGR_AXI_CLK, GGR_MEMNOC_CLK, GGR_AHB_CLK, GGR_HUB_CLK, GGR_SMMU_CLK, GGR_COUNT };
+    GGR_AXI_CLK, GGR_MEMNOC_CLK, GGR_AHB_CLK, GGR_HUB_CLK, GGR_SMMU_CLK,
+    /* Append to preserve existing IDs. The observer requires a separate GCC
+     * GPU SNOC DVM vote; a MEMNOC vote cannot stand in for it. */
+    GGR_DVM_CLK, GGR_COUNT };
+enum { GGC_PHASE_RESOLVE=GGR_COUNT+1, GGC_PHASE_QUIET=GGR_COUNT+2 };
 enum gg_resource_result { GGRC_OK, GGRC_UNCHANGED_ERROR, GGRC_UNCERTAIN };
 struct gg_power_ops {
     void *cookie;
@@ -35,11 +39,11 @@ static inline int gg_power_release(const struct gg_power_ops *o,struct gg_power_
 {
     unsigned i;int quiet;
     if (!gg_power_ops_valid(o) || !s) return GGC_ARGUMENT;
-    if (s->quarantined) return GGC_BUSY;
+    if (s->quarantined) { s->ready=0; return GGC_BUSY; }
     if (!s->held) { s->ready=0; return GGC_OK; }
     quiet=o->quiescent(o->cookie);
-    if (quiet!=1) { s->quarantined=1;
-        gg_record_full(&s->diag,o->trace,o->cookie,GGD_POWER,12,GGD_VALIDATE,0,1,(uint64_t)quiet,6|GGD_NATIVE,~(uint64_t)0,GGC_BUSY,quiet,1);
+    if (quiet!=1) { s->quarantined=1; s->ready=0;
+        gg_record_full(&s->diag,o->trace,o->cookie,GGD_POWER,GGC_PHASE_QUIET,GGD_VALIDATE,0,1,(uint64_t)quiet,6|GGD_NATIVE,~(uint64_t)0,GGC_BUSY,quiet,1);
         return GGC_BUSY; }
     for (i=GGR_COUNT;i>0;--i) if (s->held&(1u<<(i-1))) {
         int e=o->release(o->cookie,i-1,s->tokens[i-1]);
@@ -57,11 +61,11 @@ static inline int gg_power_acquire(const struct gg_power_ops *o,struct gg_power_
     if (!gg_power_ops_valid(o) || !s) return GGC_ARGUMENT;
     if (s->attempted || s->held || s->quarantined) return GGC_BUSY;
     s->attempted=1;
-    s->stage=11;e=o->resolve(o->cookie);
-    gg_record_full(&s->diag,o->trace,o->cookie,GGD_POWER,11,GGD_CONFIGURE,0,0,0,GGD_NATIVE,0,e?GGC_PROVIDER:0,e,0);
+    s->stage=GGC_PHASE_RESOLVE;e=o->resolve(o->cookie);
+    gg_record_full(&s->diag,o->trace,o->cookie,GGD_POWER,GGC_PHASE_RESOLVE,GGD_CONFIGURE,0,0,0,GGD_NATIVE,0,e?GGC_PROVIDER:0,e,0);
     if(e)return s->error=GGC_PROVIDER;
-    s->stage=12;observed=o->quiescent(o->cookie);
-    gg_record(&s->diag,o->trace,o->cookie,GGD_POWER,12,GGD_VALIDATE,0,1,(uint64_t)observed,6,observed==1?0:GGC_BUSY,0);
+    s->stage=GGC_PHASE_QUIET;observed=o->quiescent(o->cookie);
+    gg_record(&s->diag,o->trace,o->cookie,GGD_POWER,GGC_PHASE_QUIET,GGD_VALIDATE,0,1,(uint64_t)observed,6,observed==1?0:GGC_BUSY,0);
     if(observed!=1)return s->error=GGC_BUSY;
     for (i=0;i<GGR_COUNT;++i) {
         enum gg_resource_result e; uint64_t token=0;

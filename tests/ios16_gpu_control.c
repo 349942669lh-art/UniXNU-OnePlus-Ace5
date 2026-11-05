@@ -43,7 +43,7 @@ static void power_tests(void)
         struct gg_power_ops o={&f,resolve,pquiet,acquire,release,observe,delay,trace};
         f.fail=i;f.ready=f.stopped=1;
         assert(gg_power_acquire(&o,&s)==(i?GGC_PROVIDER:GGC_OK));
-        if(!i) {assert(s.ready && s.held==0x3ff);assert(!gg_power_release(&o,&s));}
+        if(!i) {assert(s.ready && s.held==((1u<<GGR_COUNT)-1));assert(!gg_power_release(&o,&s));}
         else {assert(s.diag.failure.phase==i-1 && s.diag.failure.operation==GGD_ACQUIRE);}
         assert(!s.held && !f.held && !s.quarantined);++cases;
     }

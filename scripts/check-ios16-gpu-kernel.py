@@ -14,6 +14,7 @@ MARKERS = (
     b'GIULIA GPU DEV: gunyah_owner_abi=1 current_boot_resources=1 guarded_hvc=1 fence_completion=0',
     b'cpu_cache=normal-copyback',
     b'GIULIA GPU: host RAM cache publication complete;',
+    b'GIULIA GPU: runtime_lease_abi=1 native_submit_abi=1 runtime_provider_bound=0 submit_provider_bound=0',
     b'GIULIA GPU HFI: table_iova=',
     b'GIULIA GPU HFI: query_ack=1',
     b'GIULIA GPU PLATFORM: abi=3',
@@ -52,7 +53,12 @@ SYMBOLS = tuple('_giulia_gpu_' + name for name in (
       '_giulia_gpu_gunyah_irq_invalidate','_giulia_gpu_gunyah_irq_dispatch',
       '_giulia_gpu_gunyah_irq_handler_registered','_giulia_gpu_gunyah_irq_controller_changed',
       '_ggown_init','_ggown_bootstrap','_ggown_probe','_ggown_poll',
-      '_ggown_copy_snapshot','_ggown_get_status','_ggown_get_channel','_ggown_invalidate')
+      '_ggown_copy_snapshot','_ggown_get_status','_ggown_get_channel','_ggown_invalidate',
+      '_giulia_gpu_runtime_acquire','_giulia_gpu_runtime_live',
+      '_giulia_gpu_runtime_dma','_giulia_gpu_runtime_drain',
+      '_giulia_gpu_runtime_release','_giulia_gpu_runtime_quarantine',
+      '_giulia_gpu_submit_encode','_giulia_gpu_submit_init','_giulia_gpu_submit',
+      '_giulia_gpu_submit_poll','_giulia_gpu_submit_invalidate')
 
 
 def linked_functions(kernel):

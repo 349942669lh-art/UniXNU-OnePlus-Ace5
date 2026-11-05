@@ -24,7 +24,7 @@ class LinkedGPU(unittest.TestCase):
         self.kernel[self.strings_at:self.strings_at + len(strings)] = strings
         for i, symbol in enumerate(MODULE['SYMBOLS']):
             struct.pack_into('<IBBHQ', self.kernel, 0x400 + 16 * i,
-                             strings.index(symbol.encode()), 0x0f, 1, 0, self.base + 0x200 + 4 * i)
+                             strings.index(symbol.encode()+b'\0'), 0x0f, 1, 0, self.base + 0x200 + 4 * i)
         markers = b'\0'.join(MODULE['MARKERS'])
         markers_at = (self.strings_at + len(strings) + 255) & ~255
         assert markers_at + len(markers) <= len(self.kernel)

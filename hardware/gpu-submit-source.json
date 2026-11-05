@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "commit": "453d8875f815bf9dfad9035982861226a4823a6c",
+  "source_root": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650/453d8875f815bf9dfad9035982861226a4823a6c/vendor/qcom/opensource/graphics-kernel/",
+  "sources": {
+    "adreno_hfi.h": "03fe8212d1a75148999f67df2044133a047501e91a234d0c1176d264428f713c",
+    "adreno_gen7_hwsched_hfi.c": "306930a131d0fa3bc3cc3873dbfaf205b6bd5a4243f55a74cced411c08de6782"
+  },
+  "wire": {
+    "message_id": 130,
+    "type": 0,
+    "notify_flag": 32,
+    "submit_words": 8,
+    "ib_words": 3,
+    "ib_size_unit": "bytes",
+    "dispatch_queue_first": 3,
+    "dispatch_queue_count": 14,
+    "doorbell_shift_from_queue": -1,
+    "storage_alignment_words": 4,
+    "padding": 4210752250
+  },
+  "supported_subset": "At most four pinned trusted nonsecure IBs, one in-flight request, legacy dispatch queues, no timestamp or HFI sequence wrap",
+  "not_implemented": [
+    "Authoritative board runtime power/clock/IRQ provider",
+    "CP initialization and 900e failure diagnosis",
+    "Registered context and real hardware-fence completion provider",
+    "Untrusted PM4 validation, context-queue mode and production task isolation",
+    "Display composition and Metal publication"
+  ],
+  "hardware_validated": false
+}

@@ -49,6 +49,7 @@ extern "C" { extern unsigned long gPhysBase, gPhysSize, gVirtBase; }
 #include "giulia_gpu_hfi_alloc_pool.h"
 #include "giulia_gpu_hfi_pump.h"
 #include "giulia_gpu_stack.h"
+#include "giulia_gpu_submit.h"
 #include "giulia_gpu_share_runtime.h"
 #include "../vendor/ArmSmmu4K/ArmSmmu4K.h"
 
@@ -740,6 +741,9 @@ void GiuliaGPU::reportStatus()
         gg_terminal_stage_name(__atomic_load_n(&gpuTerminal.stage,__ATOMIC_ACQUIRE)),mode,
         firmwareVerified,hostPrepared,reservationCount,tablePages,leafPages);
     IOLog("GIULIA GPU: power_acquired=0 smmu_active=0 gmu_started=0 hardware_ready=0 acceleration=0 device_writes=0\n");
+    /* Transactions are linked, not bound to an authoritative runtime-power,
+     * context or fence backend. Do not report them as active hardware. */
+    IOLog("GIULIA GPU: runtime_lease_abi=1 native_submit_abi=1 runtime_provider_bound=0 submit_provider_bound=0\n");
     IOLog("GIULIA GPU: observations=%u observation_stage=%u valid_fields=%#x\n",
         observations,powerObservation.stage,powerObservation.valid_fields);
     IOLog("GIULIA GPU: host_cache_published=%u cpu_cache=normal-copyback gpu_memory_attribute=normal-nc runtime_cache_ownership=unassigned\n",hostPrepared);

@@ -1,5 +1,10 @@
 # A750 GPU 接入框架（阶段机 v1）
 
+> 2026-11-05 增量：运行期电源/共享资源事务及原厂 ISSUE_CMD 受限提交库见
+> [GPU_RUNTIME_SUBMISSION.md](GPU_RUNTIME_SUBMISSION.md)。新增代码已接入
+> 原生构建和宿主测试，但尚无板级授权/电源/context/fence provider 绑定；
+> 不代表下表任何硬件阶段已经通过。下文早期 SCRATCH 阻塞记录不是当前唯一缺口。
+
 本文是 giulia（OnePlus Ace 5 / SM8650 / Adreno 750v2）GPU 接入的**整体框架**，
 不是又一份实验记录。它做三件事：
 
@@ -70,7 +75,7 @@ CP 侧另有独立问题：900E 之前的寄存器初始化只做了部分 `gen7
 | `GGSK_HFI` | hfi-client | 设备 | `GGSK_GMU_START` | 部分 | `giulia_gpu_hfi.h`、`giulia_gpu_hfi_alloc.h` | feature/performance/bandwidth/`CORE_FW_START` 均有带状态的 ACK；动态请求由自有映射应答 | 应答器已实现并过 21 组宿主用例；待接服务的 pool/映射后端 |
 | `GGSK_CONTROLLER` | controller | 设备 | `GGSK_SHARE`+`GGSK_SMMU`+`GGSK_GUNYAH` | 未通 | `giulia_gpu_fence.h`、`giulia_gpu_fence_queue.h`、`giulia_gpu_fence_cpu.h` | 表头/队列布局、CTX0 client 1、队列前后各一页授权、门铃 label6、Normal NC 守卫 | 补控制器相邻页授权与 CTX0 注册 |
 | `GGSK_FENCE` | fence-provider | 设备 | `GGSK_CONTROLLER`+`GGSK_GMU_START` | 未通 | `giulia_gpu_fence_provider.h`、`giulia_gpu_fence_native.c` | provider proof bits 完整、epoch 一致、跨 VM 锁与完成后端可观察 | 写 fence 完成/错误/复位生命周期 |
-| `GGSK_SUBMIT` | submit | 设备 | `GGSK_FENCE`+`GGSK_HFI` | 未通 | 无（框架预留） | 一条自有 IB 到达真实 fence，MEM_WRITE 结果回读一致 | 900E 定因后重建最小 CP 路径 |
+| `GGSK_SUBMIT` | submit | 设备 | `GGSK_FENCE`+`GGSK_HFI` | 未通（已有离线实现） | `giulia_gpu_submit.{h,c}`：受限 ISSUE_CMD 与 fence 生命周期，未绑定 provider | 一条自有 IB 到达真实 fence，MEM_WRITE 结果回读一致 | 900E 定因后完成 CP、context、硬件 fence provider 并绑定 |
 | `GGSK_SCANOUT` | scanout | 设备 | `GGSK_SUBMIT` | 未通 | 无（显示通路独立可用） | GPU 帧与 CPU 参考像素一致，swap offer/retire 成功 | 接 NativeMobileDisplay 等价的 offer/retire |
 | `GGSK_METAL` | metal-publish | 设备 | `GGSK_SUBMIT`+`GGSK_SCANOUT` | 未通 | 无 | 加速器发布后 CARenderServer 走原生设备且无回退 | 复用 sheng 的 publish 路径但按 iOS 16 重新验证 |
 
