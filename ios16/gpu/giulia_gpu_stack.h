@@ -301,10 +301,16 @@ static inline int ggsk_retreat(struct ggsk *s)
 
 /* Kernel entry points (giulia_gpu_stack.c): the same transitions plus bounded
  * logging, so the service never formats stage state itself. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 int giulia_gpu_stack_init(struct ggsk *s,const struct ggsk_policy *policy);
 int giulia_gpu_stack_register(struct ggsk *s,unsigned stage,const struct ggsk_ops *ops);
 int giulia_gpu_stack_plan(struct ggsk *s);
 int giulia_gpu_stack_advance(struct ggsk *s,unsigned target);
 int giulia_gpu_stack_retreat(struct ggsk *s);
 void giulia_gpu_stack_log(const struct ggsk *s);
+#ifdef __cplusplus
+}
+#endif
 #endif

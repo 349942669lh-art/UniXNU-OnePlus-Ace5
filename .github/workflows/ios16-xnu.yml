@@ -239,7 +239,7 @@ jobs:
               with log.open(errors='replace') as stream:
                   for line in stream:
                       line = re.sub(r'\x1b\[[0-9;]*m', '', line).strip()
-                      if not re.search(r':\d+:\d+: (?:fatal )?error:|^(?:clang(?:\+\+)?: error:|ld:|Undefined symbols for architecture)', line):
+                      if not re.search(r':\d+:\d+: (?:fatal )?error:|^(?:clang(?:\+\+)?: error:|ld:(?! warning:)|Undefined symbols for architecture)', line):
                           continue
                       count += 1
                       if count <= 20:

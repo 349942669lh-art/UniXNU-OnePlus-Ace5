@@ -187,6 +187,7 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-rec
     tests/ios16_gpu_share_runtime.c ios16/gpu/giulia_gpu_gunyah_share.c -o "$tmp/share-runtime"
 "$tmp/share-runtime"
 python3 tests/ios16_gpu_stack_contract.py
+python3 tests/ios16_gpu_stack_linkage.py
 python3 tests/ios16_gpu_hfi_wiring.py
 c++ -x c++ -std=c++17 -Wall -Wextra -Werror -fsyntax-only \
     -include ios16/gpu/giulia_gpu_pack.h -include ios16/gpu/giulia_gpu_memory.h \
