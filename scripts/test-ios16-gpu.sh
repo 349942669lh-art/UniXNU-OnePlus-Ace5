@@ -70,8 +70,10 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-rec
     -DGG_GUNYAH_HVC_STANDALONE -DGG_GUNYAH_HVC_TEST -DGG_GUNYAH_HVC_NO_PROBE_HOOK \
     tests/ios16_gpu_gunyah_hvc.c ios16/gpu/giulia_gpu_gunyah_hvc.c -o "$tmp/gunyah-hvc-no-probe"
 "$tmp/gunyah-hvc-no-probe"
+python3 tests/ios16_gpu_probe_optional.py
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
     -DGG_GUNYAH_SESSION_STANDALONE -DGG_GUNYAH_HVC_STANDALONE -DGG_GUNYAH_HVC_TEST \
+    -DGG_GUNYAH_HVC_NO_PROBE_HOOK \
     tests/ios16_gpu_gunyah_session.c ios16/gpu/giulia_gpu_gunyah_session.c \
     ios16/gpu/giulia_gpu_gunyah_hvc.c -o "$tmp/gunyah-session"
 "$tmp/gunyah-session"

@@ -16,21 +16,22 @@
 #endif
 extern void ggh_hvc_test_invoke(struct ggh_hvc_regs *);
 extern void ggh_hvc_test_doorbell_invoke(struct ggh_hvc_regs *);
-/* Standalone fixtures that only exercise MSGQ/doorbell need no new symbol.
- * An absent probe hook fails closed and can never reach a native HVC. */
-#if defined(__APPLE__)
-extern void ggh_hvc_test_probe_invoke(struct ggh_hvc_regs *) __attribute__((weak_import));
-#else
-extern void ggh_hvc_test_probe_invoke(struct ggh_hvc_regs *) __attribute__((weak));
-#endif
 static void ggh_hvc_native(struct ggh_hvc_regs *r) { ggh_hvc_test_invoke(r); }
 static void ggh_hvc_doorbell_native(struct ggh_hvc_regs *r)
 { ggh_hvc_test_doorbell_invoke(r); }
+/* Explicit fixture capability, not a platform-dependent weak undefined
+ * reference: Mach-O linkers may reject an absent weak import. A no-probe
+ * fixture must have no probe symbol at all and must never fall through to HVC. */
+#if defined(GG_GUNYAH_HVC_NO_PROBE_HOOK)
+static int ggh_hvc_probe_native(struct ggh_hvc_regs *r)
+{ (void)r;return 0; }
+#else
+extern void ggh_hvc_test_probe_invoke(struct ggh_hvc_regs *);
 static int ggh_hvc_probe_native(struct ggh_hvc_regs *r)
 {
-    if(!ggh_hvc_test_probe_invoke)return 0;
     ggh_hvc_test_probe_invoke(r);return 1;
 }
+#endif
 #else
 #if !defined(__aarch64__)
 #error Gunyah HVC requires AArch64
