@@ -385,5 +385,9 @@ with tempfile.TemporaryDirectory(prefix='gpu-gunyah-runtime-') as folder:
                     *include_flags(ROOT), str(unit), '-o', str(binary)], check=True)
     environment = dict(os.environ)
     environment['UBSAN_OPTIONS'] = 'halt_on_error=1:print_stacktrace=1'
-    environment['ASAN_OPTIONS'] = 'detect_leaks=1'
+    # LeakSanitizer is unavailable on the macOS arm64 runner. Keep ASan/UBSan
+    # enabled everywhere and explicit leak detection on supported Linux hosts.
+    leak_check = '0' if _module_sys.platform == 'darwin' else '1'
+    environment['ASAN_OPTIONS'] = ':'.join(filter(None,
+        (environment.get('ASAN_OPTIONS', ''), 'detect_leaks=' + leak_check)))
     subprocess.run([str(binary)], check=True, env=environment)

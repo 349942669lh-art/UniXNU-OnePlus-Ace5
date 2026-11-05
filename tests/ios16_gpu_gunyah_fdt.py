@@ -9,6 +9,7 @@ from pathlib import Path
 import argparse
 import os
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,5 +47,9 @@ with tempfile.TemporaryDirectory(prefix='gpu-gunyah-fdt-') as folder:
         subprocess.run(['dtc', '-q', '-I', 'dts', '-O', 'dtb', '-o', str(board), str(args.dts)], check=True)
     environment = dict(os.environ)
     environment['UBSAN_OPTIONS'] = 'halt_on_error=1:print_stacktrace=1'
-    environment['ASAN_OPTIONS'] = 'detect_leaks=1'
+    # LeakSanitizer is unavailable on the macOS arm64 runner. Keep ASan/UBSan
+    # enabled everywhere and explicit leak detection on supported Linux hosts.
+    leak_check = '0' if sys.platform == 'darwin' else '1'
+    environment['ASAN_OPTIONS'] = ':'.join(filter(None,
+        (environment.get('ASAN_OPTIONS', ''), 'detect_leaks=' + leak_check)))
     subprocess.run([str(binary), *([str(board)] if board else [])], check=True, env=environment)
