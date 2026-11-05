@@ -34,10 +34,15 @@ MARKERS = (
 )
 SYMBOLS = tuple('_giulia_gpu_' + name for name in (
     'power_acquire', 'power_release', 'smmu_start', 'smmu_stop',
-    'gmu_load', 'gmu_start', 'log_event', 'terminal', 'qmp_available', 'cache_publish',
-    'ipcc_claim', 'ipcc_owns', 'ipcc_release',
+    'gmu_load', 'gmu_start', 'log_event', 'terminal', 'cache_publish',
     'fence_register', 'fence_ipcc_claim', 'fence_ipcc_owns',
-)) + ('_ggh_hvc_probe_compatibility','_ggh_hvc_valid','_ggh_hvc_send','_ggh_hvc_recv',
+)) + (
+      # QMP and IPCC arbitration belong to the shared platform broker. Require
+      # its real executable definitions, including in GPU-only builds.
+      '_giulia_platform_qmp_available',
+      '_gpr_global_legacy_ipcc_claim','_gpr_global_legacy_ipcc_owns',
+      '_gpr_global_legacy_ipcc_release',
+      '_ggh_hvc_probe_compatibility','_ggh_hvc_valid','_ggh_hvc_send','_ggh_hvc_recv',
       '_ggh_hvc_doorbell_valid','_ggh_hvc_doorbell_read_clean',
       '_ggrs_init','_ggrs_init_hvc','_ggrs_probe','_ggrs_notification',
       '_ggrs_invalidate','_ggrs_copy_snapshot','_ggrs_poll',

@@ -35,6 +35,23 @@ class LinkedGPU(unittest.TestCase):
         self.assertFalse(result['acceleration'])
         self.assertFalse(result['hardware_verified'])
 
+    def test_legacy_gpu_names_cannot_replace_shared_platform_ownership(self):
+        replacements = {
+            '_giulia_platform_qmp_available': '_giulia_gpu_qmp_available',
+            '_gpr_global_legacy_ipcc_claim': '_giulia_gpu_ipcc_claim',
+            '_gpr_global_legacy_ipcc_owns': '_giulia_gpu_ipcc_owns',
+            '_gpr_global_legacy_ipcc_release': '_giulia_gpu_ipcc_release',
+        }
+        for required, obsolete in replacements.items():
+            self.assertIn(required, MODULE['SYMBOLS'])
+            self.assertNotIn(obsolete, MODULE['SYMBOLS'])
+            kernel = bytearray(self.kernel)
+            at = kernel.index(required.encode())
+            replacement = obsolete.encode() + b'\0'
+            kernel[at:at + len(replacement)] = replacement
+            with self.subTest(symbol=required), self.assertRaisesRegex(ValueError, required):
+                check_kernel(kernel)
+
     def test_undefined_or_local_controls_do_not_pass_link_verification(self):
         for i, symbol in enumerate(MODULE['SYMBOLS']):
             for kind in (0x01, 0x0e, 0x03, 0xef):
