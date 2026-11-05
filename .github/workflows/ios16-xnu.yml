@@ -238,11 +238,12 @@ jobs:
               count = 0
               with log.open(errors='replace') as stream:
                   for line in stream:
-                      if not re.search(r'\b(?:fatal )?error:', line):
+                      line = re.sub(r'\x1b\[[0-9;]*m', '', line).strip()
+                      if not re.search(r':\d+:\d+: (?:fatal )?error:|^(?:clang(?:\+\+)?: error:|ld:|Undefined symbols for architecture)', line):
                           continue
                       count += 1
                       if count <= 20:
-                          line = re.sub(r'\x1b\[[0-9;]*m', '', line).strip()[:1200]
+                          line = line[:1200]
                           line = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                           print('::error title=XNU compiler diagnostic::' + line)
               print(f'Native compiler diagnostic lines: {count}; complete output is in xnu-build.log')
