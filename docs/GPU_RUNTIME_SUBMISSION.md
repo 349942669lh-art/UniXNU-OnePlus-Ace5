@@ -17,6 +17,9 @@
   不安装 SMMU 配置、不激活 SID，也不接管 secure SID 2。
 - 平台 `authority` 必须证明本次启动的角色、精确窗口/stream/IRQ 所有权，
   并在同一串行 executor 上处理撤销。软件 claim 不能取代 hypervisor/firmware 交接。
+- 每个 power callback（包括 resolve、quiescent、poll/wait 和反序 release）
+  前后都重查授权与完整 broker bundle；丢失则停止后续硬件调用并隔离，不能
+  继续回退撤票。该防护不能替代 provider 对并发撤销的同步。
 - 成功取得全包资源后才运行 `gg_power_ops`；缺少任何 callback 或授权直接拒绝。
   确定未改变硬件的失败才按反序清理；未知电源结果或租约丢失保持资源隔离到 reset。
 - 队列索引发布前标记 DMA。命令 fence 完成**不等于 GPU/GMU 全局 DMA 已排空**；
@@ -65,3 +68,6 @@ provider 是故障注入替身。覆盖别名/带 mask SID 冲突、电源每个
 初始化闭环、context/fence 完成 provider。不得用常量成功补齐这些回调。
 先完成这几个 provider 的硬件证据与撤销生命周期，再运行最小可信 IB，观察真实
 fence 及输出数据，之后才谈显示合成/Metal 和流畅度。此次没有理由重刷根卷。
+
+当前启动链/资源权属的逐项审计、与 primary fence 共享授权的区别，以及
+power-only 测试准入条件见 [GPU_RUNTIME_OWNERSHIP.md](GPU_RUNTIME_OWNERSHIP.md)。

@@ -32,27 +32,58 @@ struct fixture {
     unsigned pin_result,pin_zero,ring_fail,cancel_fail,retire_fail,fence_result;
     unsigned lose_on_pin,lose_on_ring,lose_on_fence,corrupt_on_pin,full_on_pin;
     unsigned barriers,lose_barrier,advance_pin,advance_fence,lose_on_retire;
+    unsigned power_calls,lose_after_power_call,loss_kind,ownership_lost;
+    unsigned authority_checks,deny_authority_at;
     uint64_t now;
 };
 static struct fixture f;
-static int authority(void *p,uint64_t e){struct fixture *x=p;assert(e==77);return x->authority;}
-static int resolve(void *p){(void)p;return 0;}
-static int quiet(void *p){return ((struct fixture *)p)->quiet;}
+static int authority(void *p,uint64_t e)
+{
+    struct fixture *x=p;assert(e==77);
+    if(++x->authority_checks==x->deny_authority_at) {
+        x->authority=0;x->ownership_lost=1;
+    }
+    return x->authority;
+}
+static void power_enter(struct fixture *x)
+{
+    /* A real hardware callback must never follow a detected loss. This also
+     * catches optimistic rollback after resolve/quiescent/poll/wait failure. */
+    assert(!x->ownership_lost && x->authority);
+    for(unsigned i=0;i<GGRT_LEASES;i++)
+        assert(gpr_owns(&broker,&x->runtime.leases[i],&x->runtime,77));
+    ++x->power_calls;
+}
+static void power_leave(struct fixture *x)
+{
+    if(x->power_calls!=x->lose_after_power_call)return;
+    x->ownership_lost=1;
+    if(x->loss_kind==0)x->authority=0;
+    else {
+        unsigned slot=x->loss_kind-1;
+        assert(slot<GGRT_LEASES);
+        assert(!gpr_quarantine(&broker,&x->runtime.leases[slot],&x->runtime,77));
+    }
+}
+static int resolve(void *p){struct fixture *x=p;power_enter(x);power_leave(x);return 0;}
+static int quiet(void *p){struct fixture *x=p;power_enter(x);power_leave(x);return x->quiet;}
 static enum gg_resource_result power_acquire(void *p,unsigned i,uint32_t v,uint64_t *t)
 {
-    struct fixture *x=p;++x->acquires;
+    struct fixture *x=p;power_enter(x);++x->acquires;
     assert(i<GGR_COUNT && v==(i==GGR_GMU_RATE?625000000u:i==GGR_HUB_RATE?200000000u:1));
-    if(x->power_fail==i+1)return x->power_uncertain?GGRC_UNCERTAIN:GGRC_UNCHANGED_ERROR;
-    x->power_held|=1u<<i;*t=100+i;return GGRC_OK;
+    if(x->power_fail==i+1) {
+        power_leave(x);return x->power_uncertain?GGRC_UNCERTAIN:GGRC_UNCHANGED_ERROR;
+    }
+    x->power_held|=1u<<i;*t=100+i;power_leave(x);return GGRC_OK;
 }
 static int power_release(void *p,unsigned i,uint64_t t)
 {
-    struct fixture *x=p;++x->releases;assert(t==100+i && (x->power_held&(1u<<i)));
-    if(x->power_release_fail==i+1)return 5;
-    x->power_held&=~(1u<<i);return 0;
+    struct fixture *x=p;power_enter(x);++x->releases;assert(t==100+i && (x->power_held&(1u<<i)));
+    if(x->power_release_fail==i+1){power_leave(x);return 5;}
+    x->power_held&=~(1u<<i);power_leave(x);return 0;
 }
-static int observe(void *p){return ((struct fixture *)p)->observed;}
-static int wait_us(void *p,unsigned us){(void)p;assert(us==10);return 0;}
+static int observe(void *p){struct fixture *x=p;power_enter(x);power_leave(x);return x->observed;}
+static int wait_us(void *p,unsigned us){struct fixture *x=p;assert(us==10);power_enter(x);power_leave(x);return 0;}
 static volatile uint32_t *hdr(unsigned q){return f.memory+GGH_HEADER_WORDS+q*GGH_QUEUE_HEADER_WORDS;}
 static volatile uint32_t *ring_memory(unsigned q){return f.memory+GGH_RING_OFFSET/4+q*GGH_RING_WORDS;}
 static int proof(void *p,uint64_t e,uint32_t c,uint32_t q)
@@ -108,6 +139,78 @@ static struct ggsub_request request(unsigned q,unsigned count)
     return r;
 }
 static unsigned held(void){unsigned n=0;for(unsigned i=0;i<GPR_MAX_LEASES;i++)n+=broker.leases[i].state!=0;return n;}
+static void power_boundary_tests(void)
+{
+    /* Refusal at each pre-call guard must prevent that callback altogether.
+     * The first two authority checks precede the guarded power transaction. */
+    for(unsigned call=0;call<GGR_COUNT+4;call++) {
+        reset();f.deny_authority_at=3+2*call;
+        if(call==GGR_COUNT+3)f.observed=0;
+        assert(giulia_gpu_runtime_acquire(&f.runtime,&f.runtime_ops,77)==GGRT_QUARANTINED);
+        assert(f.ownership_lost && f.power_calls==call && !f.releases);
+        assert(f.runtime.quarantined && held()==GGRT_LEASES);++cases;
+    }
+    for(unsigned call=0;call<GGR_COUNT+1;call++) {
+        ready();unsigned before=f.power_calls;
+        f.deny_authority_at=f.authority_checks+2+2*call;
+        assert(giulia_gpu_runtime_release(&f.runtime)==GGRT_QUARANTINED);
+        assert(f.ownership_lost && f.power_calls==before+call);
+        assert(f.runtime.quarantined && held()==GGRT_LEASES);++cases;
+    }
+    ready();assert(!giulia_gpu_runtime_dma(&f.runtime));
+    unsigned before=f.power_calls;f.deny_authority_at=f.authority_checks+2;
+    assert(giulia_gpu_runtime_drain(&f.runtime)==GGRT_LOST);
+    assert(f.ownership_lost && f.power_calls==before && f.runtime.dma);
+    assert(f.runtime.quarantined && held()==GGRT_LEASES);++cases;
+    /* Loss of platform authority OR any one of the four broker tokens at
+     * every provider return boundary: no later I/O, no unauthorized rollback,
+     * no DMA retirement or epoch reuse, even when the callback reports success. */
+    for(unsigned loss=0;loss<=GGRT_LEASES;loss++) {
+        for(unsigned call=1;call<=GGR_COUNT+4;call++) {
+            reset();f.loss_kind=loss;f.lose_after_power_call=call;
+            if(call==GGR_COUNT+4)f.observed=0; /* include the first poll wait */
+            assert(giulia_gpu_runtime_acquire(&f.runtime,&f.runtime_ops,77)==GGRT_QUARANTINED);
+            assert(f.ownership_lost && f.power_calls==call && !f.releases);
+            assert(f.runtime.quarantined && f.runtime.power.quarantined);
+            assert(!f.runtime.ready && !f.runtime.power.ready && held()==GGRT_LEASES);
+            assert(f.runtime.power.held==f.power_held);
+            for(unsigned i=0;i<GGR_COUNT;i++)
+                assert(f.runtime.power.tokens[i]==((f.power_held&(1u<<i))?100+i:0));
+            assert(f.runtime.epoch_open && !giulia_gpu_runtime_live(&f.runtime));
+            unsigned before=f.power_calls;
+            assert(giulia_gpu_runtime_release(&f.runtime)==GGRT_QUARANTINED);
+            assert(giulia_gpu_runtime_drain(&f.runtime)==GGRT_LOST);
+            assert(giulia_gpu_runtime_acquire(&f.runtime,&f.runtime_ops,78)==GGRT_USED);
+            assert(f.power_calls==before);++cases;
+        }
+        for(unsigned call=1;call<=GGR_COUNT+1;call++) {
+            ready();f.loss_kind=loss;unsigned before=f.power_calls;
+            f.lose_after_power_call=before+call;
+            assert(giulia_gpu_runtime_release(&f.runtime)==GGRT_QUARANTINED);
+            assert(f.ownership_lost && f.power_calls==before+call);
+            assert(f.releases==call-1 && held()==GGRT_LEASES);
+            assert(f.runtime.quarantined && !f.runtime.ready && !f.runtime.power.ready);
+            assert(f.runtime.epoch_open);++cases;
+        }
+        ready();assert(!giulia_gpu_runtime_dma(&f.runtime));
+        f.loss_kind=loss;unsigned before=f.power_calls;
+        f.lose_after_power_call=before+1;
+        assert(giulia_gpu_runtime_drain(&f.runtime)==GGRT_LOST);
+        assert(f.ownership_lost && f.power_calls==before+1 && !f.releases);
+        assert(f.runtime.dma && f.runtime.quarantined && held()==GGRT_LEASES);
+        for(unsigned i=1;i<GGRT_LEASES;i++)
+            assert(broker.leases[f.runtime.leases[i].slot].dma_active);
+        ++cases;
+        /* A definite resource failure does not permit rollback if the same
+         * callback lost authority. No provider may touch hardware afterwards. */
+        for(unsigned resource=1;resource<=GGR_COUNT;resource++) {
+            reset();f.loss_kind=loss;f.power_fail=resource;
+            f.lose_after_power_call=resource+2;
+            assert(giulia_gpu_runtime_acquire(&f.runtime,&f.runtime_ops,77)==GGRT_QUARANTINED);
+            assert(f.ownership_lost && !f.releases && held()==GGRT_LEASES);++cases;
+        }
+    }
+}
 static void runtime_tests(void)
 {
     reset();f.authority=0;
@@ -241,7 +344,7 @@ static void submission_tests(void)
 }
 int main(void)
 {
-    runtime_tests();encoding_tests();submission_tests();
+    runtime_tests();power_boundary_tests();encoding_tests();submission_tests();
     printf("GPU runtime/submission: %u host-only cases passed; no hardware provider or acceleration tested\n",cases);
     return 0;
 }

@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "date": "2026-11-05",
+  "inspected_baseline": "23eb8e624dfe86d2a4b82ac5f619cd5c15ba5b29",
+  "scope": "Static ownership/handoff audit plus host fault injection, not current device ownership evidence",
+  "runtime_provider_bound": false,
+  "submit_provider_bound": false,
+  "hardware_validated": false,
+  "power_only_test_admissible": false,
+  "sources": [
+    {
+      "file": "adreno_gen7_gmu.c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650/453d8875f815bf9dfad9035982861226a4823a6c/vendor/qcom/opensource/graphics-kernel/adreno_gen7_gmu.c",
+      "sha256": "776f894dc59a95b485ff7538755be274e8cd944bbfa29931e026f58c43cb0851",
+      "bytes": 90472
+    },
+    {
+      "file": "adreno_gen7_hwsched.c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650/453d8875f815bf9dfad9035982861226a4823a6c/vendor/qcom/opensource/graphics-kernel/adreno_gen7_hwsched.c",
+      "sha256": "5452e244e35f19e8d5f896f3fd1805edf420211f04cfc8f39decd003eb01bc21",
+      "bytes": 55665
+    },
+    {
+      "file": "gpucc-pineapple.c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/gpucc-pineapple.c",
+      "sha256": "bf45aa00b598f55632dee3b4a7d0f8ac6a1dffb84bf82fdbe892f0a5c00b9284",
+      "bytes": 18014
+    }
+  ],
+  "power_resources": [
+    {
+      "id": 0,
+      "enum": "GGR_CX",
+      "firmware_name": "gpu_cc_cx_gdsc",
+      "requested_value": 1
+    },
+    {
+      "id": 1,
+      "enum": "GGR_GMU_RATE",
+      "firmware_name": "gpu_cc_cx_gmu_clk",
+      "requested_value": 625000000
+    },
+    {
+      "id": 2,
+      "enum": "GGR_HUB_RATE",
+      "firmware_name": "gpu_cc_hub_aon_clk",
+      "requested_value": 200000000
+    },
+    {
+      "id": 3,
+      "enum": "GGR_GMU_CLK",
+      "firmware_name": "gpu_cc_cx_gmu_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 4,
+      "enum": "GGR_CXO_CLK",
+      "firmware_name": "gpu_cc_cxo_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 5,
+      "enum": "GGR_AXI_CLK",
+      "firmware_name": "gcc_ddrss_gpu_axi_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 6,
+      "enum": "GGR_MEMNOC_CLK",
+      "firmware_name": "gcc_gpu_memnoc_gfx_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 7,
+      "enum": "GGR_AHB_CLK",
+      "firmware_name": "gpu_cc_ahb_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 8,
+      "enum": "GGR_HUB_CLK",
+      "firmware_name": "gpu_cc_hub_aon_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 9,
+      "enum": "GGR_SMMU_CLK",
+      "firmware_name": "gpu_cc_hlos1_vote_gpu_smmu_clk",
+      "requested_value": 1
+    },
+    {
+      "id": 10,
+      "enum": "GGR_DVM_CLK",
+      "firmware_name": "gcc_gpu_snoc_dvm_gfx_clk",
+      "requested_value": 1
+    }
+  ],
+  "power_provider_prerequisites": [
+    {
+      "name": "config_access",
+      "firmware_name": "gcc_gpu_cfg_ahb_clk",
+      "status": "requires independent live lease; not a side effect of read-only resolve"
+    },
+    {
+      "name": "acd_policy",
+      "firmware_name": "aop-acd-disable",
+      "status": "requires bounded shared platform transaction or proven retained policy; QMP availability is not a power grant"
+    },
+    {
+      "name": "parents_voltage_bandwidth",
+      "status": "requires runtime aggregation, original board policy and safe withdrawal; enable bits alone are insufficient"
+    }
+  ],
+  "resource_exclusion": {
+    "gpu_mmio_envelope": {
+      "base": "0x03d00000",
+      "bytes": "0xe0000",
+      "access_to_holes": false
+    },
+    "smmu": "0x03da0000",
+    "nonsecure_sids": [
+      0,
+      1,
+      5
+    ],
+    "secure_sid_2_acquired": false,
+    "extra_platform_provider_resources": [
+      "GCC config/clock routes",
+      "AOP/QMP",
+      "parent clocks/voltage/bandwidth votes"
+    ],
+    "envelope_is_hardware_grant": false
+  },
+  "irq_description": {
+    "source": "hardware/sm8650-gpu.json",
+    "gpu_spi": 300,
+    "gmu_spis": [
+      304,
+      305
+    ],
+    "registered_or_owned": false,
+    "rm_irq_is_gpu_irq": false
+  },
+  "audit_findings": [
+    {
+      "id": "boot-services-only",
+      "paths": [
+        "uefi-overlay/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe/GpuPower.c",
+        "uefi-overlay/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe/GiuliaInitrdDxe.inf"
+      ],
+      "finding": "DXE_DRIVER calls gBS/gDS and boot-discovered ClockDxe; no callable XNU runtime clock provider or independent transferable power token"
+    },
+    {
+      "id": "power-report-not-lease",
+      "paths": [
+        "ios16/platform/giulia_platform_power.h"
+      ],
+      "finding": "GGPH_PREPARED validates recorded preparation, not live authority"
+    },
+    {
+      "id": "rm-transport-not-gpu-owner",
+      "paths": [
+        "ios16/gpu/giulia_gpu_gunyah_boot.h",
+        "ios16/gpu/giulia_gpu_gunyah_owner.h",
+        "ios16/gpu/giulia_gpu_gunyah_queries.h"
+      ],
+      "finding": "Boot RM caps and IRQ provenance, native RM channel lifecycle and VMID queries do not grant GPU MMIO/stream/IRQ ownership"
+    },
+    {
+      "id": "primary-sharing-refused",
+      "paths": [
+        "ios16/gpu/giulia_gpu_share_impl.h"
+      ],
+      "finding": "shareAuthorize refuses no-primary-carveout-proof. This is a separate authority scope from GPU power-only; do not bypass it or require an unsafe share to power on"
+    },
+    {
+      "id": "local-broker-only",
+      "paths": [
+        "ios16/platform/GiuliaPlatformResources.cpp",
+        "ios16/gpu/giulia_gpu_runtime.c"
+      ],
+      "finding": "Shared software ledger excludes XNU participants but cannot grant hardware or remote-VM authority"
+    },
+    {
+      "id": "per-callback-loss-guard",
+      "paths": [
+        "ios16/gpu/giulia_gpu_runtime.c",
+        "tests/ios16_gpu_submission.c"
+      ],
+      "finding": "Check complete broker bundle and live authority before/after every synchronous power callback; quarantine stops further I/O, rollback and DMA retirement. Provider must still serialize concurrent revocation"
+    }
+  ],
+  "blocked_on": [
+    "current-boot authoritative GPU resource handoff and synchronized revocation",
+    "real persistent XNU config/clock/power provider with original parent/voltage/bandwidth policy",
+    "safe reset/quiescence observation and serialized service lifecycle"
+  ],
+  "unchanged_device_policy": {
+    "host_only": true,
+    "stage_machine_device_writes": false,
+    "new_terminal_hardware_commands": false,
+    "smmu_context_activation": false,
+    "gmu_firmware_execution": false,
+    "cp_init": false,
+    "userdata_writes": false
+  },
+  "spec_reference": "https://uefi.org/specs/UEFI/2.10/02_Overview.html"
+}

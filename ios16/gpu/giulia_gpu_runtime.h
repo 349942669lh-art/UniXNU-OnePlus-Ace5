@@ -14,8 +14,12 @@ struct ggrt_ops {
     void *cookie;
     /* Read-only platform proof for this boot/role/IRQ epoch and all named
      * windows/streams. Neither UEFI READY nor this software ledger suffices.
-     * Provider must serialize revocation with this executor before mutation. */
+     * Provider must serialize revocation with this executor before mutation.
+     * Runtime rechecks this and the broker bundle around every power callback;
+     * checks cannot prevent a concurrent revocation DURING a hardware access. */
     int (*authority)(void *,uint64_t);
+    /* All callbacks are synchronous, non-reentrant and use this nested cookie.
+     * trace is CPU-only logging, including after quarantine; never hardware I/O. */
     struct gg_power_ops power;
 };
 struct ggrt_state {
