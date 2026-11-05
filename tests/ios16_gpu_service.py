@@ -38,6 +38,8 @@ static void PE_parse_boot_argn(const char *,int *v,size_t){*v=1;}
 #include <vector>
 #include "giulia_gpu_terminal.h"
 #include "giulia_gpu_power.h"
+#include "giulia_gpu_power_owner.h"
+#include "giulia_gpu_gunyah_boot.h"
 #include "giulia_platform_power.h"
 #include "giulia_gpu_hfi.h"
 #include "giulia_gpu_hfi_alloc_pool.h"
@@ -74,6 +76,20 @@ using wait_result_t=int;
 static void *current_thread(){return nullptr;}
 static void thread_terminate(void *){}
 struct IOService {void stop(IOService *){}};
+/* Only the worker-to-controller boundary is doubled here. The separate
+ * power_owner fixture executes the actual resident controller and runtime. */
+static ggpo_status workerPowerStatus={};
+static unsigned powerStarts=0,powerStops=0;
+static int powerStartCode=GGPO_UNAVAILABLE;
+extern "C" int giulia_gpu_power_owner_acquire(void *,uint64_t epoch) {
+    assert(epoch==17);++powerStarts;return powerStartCode;
+}
+extern "C" int giulia_gpu_power_owner_release(void *) {
+    ++powerStops;return workerPowerStatus.quarantined?GGPO_QUARANTINED:GGPO_OK;
+}
+extern "C" int giulia_gpu_power_owner_status(ggpo_status *out) {
+    *out=workerPowerStatus;return GGPO_OK;
+}
 static struct gg_terminal_mailbox gpuTerminal;
 /* Share fixtures: an aligned control page, a live owner snapshot (5/9) and a
  * channel that reports itself as this epoch's exclusive owner. */
@@ -119,9 +135,12 @@ public:
     bool workerRunning=true,stopping=false,terminalOwner=true;
     unsigned mode=1,reservationCount=5,tablePages=6,leafPages=104,observations=0;
     bool hostOnly=false;
+    bool powerOnlyTest=false,powerOnlyAttached=false;unsigned powerOnlyCode=GGPO_UNAVAILABLE;
+    void powerOnlyStart();void powerOnlyStop();void powerOnlyReport();
     std::atomic<unsigned> devCalls{0},periodicCalls{0},gmuCalls{0};
     bool firmwareVerified=true,hostPrepared=true;
     bool bootGunyahCaptured=false;
+    struct ggr_report bootGunyah={};
     bool manualMemoryPinned=false,platformPoisoned=false,fenceMapped=false;
     void *gunyahWorker=nullptr;
     int auditFenceMappings(){platformPoisoned=true;return 8;}
@@ -212,6 +231,7 @@ public:
 #include "giulia_gpu_hfi_alloc_impl.h"
 #include "giulia_gpu_stack_impl.h"
 #include "giulia_gpu_share_impl.h"
+#include "giulia_gpu_power_owner_impl.h"
 template<class F> static void until(F condition) {
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(3);
     while(!condition()) {
@@ -403,10 +423,38 @@ int main() {
     assert(__atomic_load_n(&devState,__ATOMIC_ACQUIRE)==4u);
     bool sawDevRejected=false,sawRequestsRejected=false;
     for(const auto &line:logs) {
-        if(line.find("hostonly=1 rejected_dev_token=123 device_dispatch=0")!=std::string::npos)sawDevRejected=true;
-        if(line.find("hostonly=1 rejected_requests=")!=std::string::npos)sawRequestsRejected=true;
+        if(line.find("hostonly=1 power_only=0 rejected_dev_token=123 device_dispatch=0")!=std::string::npos)sawDevRejected=true;
+        if(line.find("hostonly=1 power_only=0 rejected_requests=")!=std::string::npos)sawRequestsRejected=true;
     }
     assert(sawDevRejected && sawRequestsRejected);
+    /* Opt-in power test must fail closed with no native source, while
+     * suppressing every legacy device path even though hostOnly is false. */
+    GiuliaGPU powerTest;powerTest.mode=3;powerTest.powerOnlyTest=true;
+    powerTest.allowObservation=true;powerTest.bootGunyahCaptured=true;powerTest.bootGunyah.epoch=17;
+    powerTest.firmwarePowerState=GGPH_PREPARED;
+    assert(gg_terminal_open(&gpuTerminal));before=statuses.load();
+    for(unsigned bit=1;bit<=GGT_SHARE;bit<<=1)
+        if(bit&GGT_COMMANDS)assert(gg_terminal_request(&gpuTerminal,bit));
+    devArgs[0]=456;__atomic_store_n(&devState,2u,__ATOMIC_RELEASE);
+    std::thread powerWorker(GiuliaGPU::worker,&powerTest,0);
+    until([&]{return statuses.load()>before;});
+    powerTest.stop(nullptr);powerWorker.join();
+    assert(powerStarts==1 && powerStops==0 && powerTest.powerOnlyCode==GGPO_UNAVAILABLE);
+    assert(!powerTest.entered && !powerTest.devCalls && !powerTest.gmuCalls && !powerTest.periodicCalls);
+    assert(!powerTest.hfiPump.received && !powerTest.manualMemoryPinned);
+    /* Uncertain native power cannot let stop free memory behind the source. */
+    workerPowerStatus.registered=workerPowerStatus.grant_held=workerPowerStatus.quarantined=1;
+    powerStartCode=GGPO_QUARANTINED;
+    GiuliaGPU uncertain;uncertain.powerOnlyTest=true;uncertain.mode=3;
+    uncertain.bootGunyahCaptured=true;uncertain.bootGunyah.epoch=17;
+    assert(gg_terminal_open(&gpuTerminal));before=statuses.load();
+    assert(gg_terminal_request(&gpuTerminal,GGT_STATUS));
+    std::thread uncertainWorker(GiuliaGPU::worker,&uncertain,0);
+    until([&]{return statuses.load()>before;});uncertain.stop(nullptr);uncertainWorker.join();
+    assert(powerStarts==2 && powerStops==1 && uncertain.manualMemoryPinned && !uncertain.released);
+    workerPowerStatus={};
+    for(const auto &line:logs)assert(line.size()<256 && line.back()=='\n');
+    puts("Power-only worker: no-source refusal, legacy-path exclusion and uncertain-stop memory retention passed (CPU fixtures only)");
     puts("Host-only isolation: raw DEV and every non-status/stack command blocked; no periodic GPU worker dispatched (host fixtures only)");
     puts("Production GPU worker/status/stop: mode gating, queued requests, observation-stop ordering and retained lifetime passed");
 }

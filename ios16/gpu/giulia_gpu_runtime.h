@@ -28,11 +28,19 @@ struct ggrt_state {
     struct gpr_token leases[GGRT_LEASES];
     uint64_t epoch;
     unsigned attempted,epoch_open,held,ready,dma,quarantined;
+    /* Staged native handoff: reserve before transfer, retain exclusion after
+     * power rollback/release until the source has safely dropped its grant. */
+    unsigned staged;
 };
 #ifdef __cplusplus
 extern "C" {
 #endif
 int giulia_gpu_runtime_acquire(struct ggrt_state *,const struct ggrt_ops *,uint64_t);
+/* Software exclusion only, never a hardware authority or power operation.
+ * cancel is allowed only with no power/DMA/uncertainty; the native caller must
+ * first finish/drop any external handoff. Ordinary acquire/release is unchanged. */
+int giulia_gpu_runtime_reserve(struct ggrt_state *,uint64_t);
+int giulia_gpu_runtime_cancel(struct ggrt_state *);
 int giulia_gpu_runtime_live(const struct ggrt_state *);
 int giulia_gpu_runtime_dma(struct ggrt_state *);
 int giulia_gpu_runtime_drain(struct ggrt_state *);

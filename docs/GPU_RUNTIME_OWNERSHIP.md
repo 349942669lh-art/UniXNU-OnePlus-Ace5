@@ -6,10 +6,15 @@
 `23eb8e624dfe86d2a4b82ac5f619cd5c15ba5b29`，不是手机当前硬件状态的证明。
 原厂资料及摘要见 [机器可读清单](../hardware/gpu-runtime-ownership-audit.json)。
 
-**现有启动链没有给 `GiuliaGPU` 一个可调用的运行期电源 provider，也没有
+**现有启动链没有给 `GiuliaGPU` 一个实际注册的原厂运行期电源 source，也没有
 完成 GPU 窗口、stream、中断的当前启动授权交接。现在不能进行 power-only
 硬件测试，更不能直接绑定提交库。** 本次只修复已有运行库的逐回调丢权防护，
 不把缺失的硬件能力包装成成功，不增加终端硬件操作。
+
+后续已加入 [XNU 常驻 power-only 交接控制器](GPU_POWER_OWNER.md)，连接
+IOService 的独立测试入口、staged broker 保留和撤权等待。它仍没有实际注册
+的原厂 source，不能据此勾选下方硬件准入条件。本文表格描述默认启动路径；
+该新增入口不会启动提交或改变默认 host-only 行为。
 
 ## 交接路径逐项审计
 

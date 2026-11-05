@@ -120,7 +120,36 @@ static int runtime_unclaim(struct ggrt_state *s)
         }
         s->epoch_open=0;
     }
+    s->staged=0;return GGRT_OK;
+}
+static int runtime_claim(struct ggrt_state *s,uint64_t epoch)
+{
+    s->epoch=epoch;
+    if(gpr_global_initialize() || gpr_global_open_epoch(s,epoch))return GGRT_CONFLICT;
+    s->epoch_open=1;
+    for(unsigned i=0;i<GGRT_LEASES;i++) {
+        if(gpr_global_claim(&runtime_keys[i],s,epoch,0,0,&s->leases[i])) {
+            int clean=runtime_unclaim(s);return clean?clean:GGRT_CONFLICT;
+        }
+        s->held|=1u<<i;
+    }
     return GGRT_OK;
+}
+__attribute__((used)) int giulia_gpu_runtime_reserve(struct ggrt_state *s,uint64_t epoch)
+{
+    if(!s || !epoch)return GGRT_ARGUMENT;
+    if(s->attempted || s->held || s->epoch_open || s->staged || s->quarantined)return GGRT_USED;
+    int code=runtime_claim(s,epoch);
+    if(!code)s->staged=1;
+    return code;
+}
+__attribute__((used)) int giulia_gpu_runtime_cancel(struct ggrt_state *s)
+{
+    if(!s)return GGRT_ARGUMENT;
+    if(s->quarantined || s->power.quarantined)return GGRT_QUARANTINED;
+    if(!s->staged || !s->epoch_open || s->held!=GGRT_ALL || s->ready || s->dma ||
+       s->power.ready || s->power.held)return GGRT_BUSY;
+    return runtime_unclaim(s);
 }
 __attribute__((used)) int giulia_gpu_runtime_live(const struct ggrt_state *s)
 {
@@ -133,19 +162,18 @@ __attribute__((used)) int giulia_gpu_runtime_acquire(struct ggrt_state *s,
     const struct ggrt_ops *ops,uint64_t epoch)
 {
     if(!s || !ops || !epoch || !ops->authority || !gg_power_ops_valid(&ops->power))return GGRT_ARGUMENT;
-    if(s->attempted || s->held || s->quarantined)return GGRT_USED;
+    if(s->attempted || s->quarantined ||
+       (s->staged && (s->held!=GGRT_ALL || !s->epoch_open || s->epoch!=epoch)) ||
+       (!s->staged && (s->held || s->epoch_open)))return GGRT_USED;
     s->attempted=1;s->ops=*ops;s->epoch=epoch;
     /* Refuse before opening leases or calling any hardware mutator. */
     if(ops->authority(ops->cookie,epoch)!=1)return GGRT_AUTHORITY;
-    if(gpr_global_initialize() || gpr_global_open_epoch(s,epoch))return GGRT_CONFLICT;
-    s->epoch_open=1;
-    for(unsigned i=0;i<GGRT_LEASES;i++) {
-        if(gpr_global_claim(&runtime_keys[i],s,epoch,0,0,&s->leases[i])) {
-            int clean=runtime_unclaim(s);return clean?clean:GGRT_CONFLICT;
-        }
-        s->held|=1u<<i;
+    if(!s->staged) {
+        int code=runtime_claim(s,epoch);
+        if(code)return code;
     }
     if(!runtime_authority(s)) {
+        if(s->staged)return GGRT_AUTHORITY;
         int clean=runtime_unclaim(s);return clean?clean:GGRT_AUTHORITY;
     }
     struct gg_power_ops guarded=runtime_power_ops(s);
@@ -154,6 +182,7 @@ __attribute__((used)) int giulia_gpu_runtime_acquire(struct ggrt_state *s,
         if(s->power.held || s->power.quarantined || !runtime_authority(s)) {
             giulia_gpu_runtime_quarantine(s);return GGRT_QUARANTINED;
         }
+        if(s->staged)return GGRT_POWER;
         int clean=runtime_unclaim(s);return clean?clean:GGRT_POWER;
     }
     s->ready=1;return GGRT_OK;
@@ -195,6 +224,6 @@ __attribute__((used)) int giulia_gpu_runtime_release(struct ggrt_state *s)
     if(gg_power_release(&guarded,&s->power)) {
         giulia_gpu_runtime_quarantine(s);return GGRT_QUARANTINED;
     }
-    s->ready=0;return runtime_unclaim(s);
+    s->ready=0;return s->staged?GGRT_OK:runtime_unclaim(s);
 }
 #endif

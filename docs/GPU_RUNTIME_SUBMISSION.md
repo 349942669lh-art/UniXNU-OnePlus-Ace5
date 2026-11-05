@@ -5,6 +5,11 @@
 `GiuliaGPU` 尚未绑定这些接口；`gpu.status` 明确输出两个 `provider_bound=0`。
 没有新终端执行命令，没有放宽 host-only 或阶段机的设备写入策略。
 
+后续增加的 [resident power-only coordinator](GPU_POWER_OWNER.md) 通过
+`runtime_reserve/cancel` 把软件排他扩展到 take/drop 交接事务两端，原有
+非 staged acquire/release 行为保持不变。实际 native source 仍未注册，
+提交库也仍未绑定；13 个 C API 链接测试不代表底层硬件后端已实现。
+
 ## 电源与资源生命周期
 
 - 电源事务补上独立 `GGR_DVM_CLK`：原有只读观察要求 GCC SNOC DVM vote，

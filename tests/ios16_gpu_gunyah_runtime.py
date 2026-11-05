@@ -109,6 +109,9 @@ public:
     bool workerRunning=false,stopping=false,terminalOwner=false;
     unsigned mode=1,firmwarePowerState=0,observations=0;
     bool hostOnly=false;
+    bool powerOnlyTest=false;
+    void powerOnlyStart(){assert(false && "Gunyah fixture must not enter the power-only path");}
+    void powerOnlyStop(){assert(false && "Gunyah fixture must not enter the power-only path");}
     struct {unsigned stage=0,valid_fields=0;} powerObservation;
     std::atomic<unsigned> references{1},releaseCalls{0},resourceAttempts{0},resourcesFreed{0};
     void retain(){assert(!gunyahOwner && !gunyahPinned);++references;}

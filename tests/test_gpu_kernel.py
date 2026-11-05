@@ -17,7 +17,7 @@ class LinkedGPU(unittest.TestCase):
         struct.pack_into('<II16sQQQQiiII', self.kernel, 32, 0x19, 152, b'__TEXT_EXEC',
                          self.base, len(self.kernel), 0, len(self.kernel), 5, 5, 1, 0)
         struct.pack_into('<16s16sQQIIIIIIII', self.kernel, 104, b'__text', b'__TEXT_EXEC',
-                         self.base + 0x200, 0x100, 0x200, 2, 0, 0, 0x80000400, 0, 0, 0)
+                         self.base + 0x200, 0x200, 0x200, 2, 0, 0, 0x80000400, 0, 0, 0)
         strings = b'\0' + b'\0'.join(s.encode() for s in MODULE['SYMBOLS']) + b'\0'
         self.strings_at = (0x400 + 16 * len(MODULE['SYMBOLS']) + 255) & ~255
         struct.pack_into('<6I', self.kernel, 184, 2, 24, 0x400, len(MODULE['SYMBOLS']), self.strings_at, len(strings))
@@ -78,7 +78,7 @@ class LinkedGPU(unittest.TestCase):
             elif mode == 1:
                 struct.pack_into('<I', kernel, 104 + 64, 0)  # No instruction attributes.
             elif mode == 2:
-                struct.pack_into('<Q', kernel, 0x400 + 8, self.base + 0x300)
+                struct.pack_into('<Q', kernel, 0x400 + 8, self.base + 0x400)
             elif mode == 3:
                 kernel[0x400 + 5] = 2  # No such section.
             else:

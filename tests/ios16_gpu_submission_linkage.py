@@ -27,6 +27,8 @@ with tempfile.TemporaryDirectory() as directory:
 #include <cassert>
 extern "C" int gpu_submission_host_test(void);
 int main() {
+    assert(giulia_gpu_runtime_reserve(nullptr,0)==GGRT_ARGUMENT);
+    assert(giulia_gpu_runtime_cancel(nullptr)==GGRT_ARGUMENT);
     assert(giulia_gpu_runtime_acquire(nullptr,nullptr,0)==GGRT_ARGUMENT);
     assert(!giulia_gpu_runtime_live(nullptr));
     assert(giulia_gpu_runtime_dma(nullptr)==GGRT_LOST);
@@ -46,4 +48,4 @@ int main() {
                     '-I', str(ROOT/'ios16/gpu'), str(driver), *objects,
                     '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
-print('All 11 real runtime/submission C exports link and execute from C++17; host-only evidence')
+print('All 13 real runtime/submission C exports link and execute from C++17; host-only evidence')

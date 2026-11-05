@@ -15,6 +15,9 @@ MARKERS = (
     b'cpu_cache=normal-copyback',
     b'GIULIA GPU: host RAM cache publication complete;',
     b'GIULIA GPU: runtime_lease_abi=1 native_submit_abi=1 runtime_provider_bound=0 submit_provider_bound=0',
+    b'GIULIA GPU POWER OWNER: abi=1 registered=',
+    b'GIULIA GPU POWER OWNER: start code=',
+    b'GIULIA REG: disabled during GPU power-only test',
     b'GIULIA GPU HFI: table_iova=',
     b'GIULIA GPU HFI: query_ack=1',
     b'GIULIA GPU PLATFORM: abi=3',
@@ -57,8 +60,11 @@ SYMBOLS = tuple('_giulia_gpu_' + name for name in (
       '_giulia_gpu_runtime_acquire','_giulia_gpu_runtime_live',
       '_giulia_gpu_runtime_dma','_giulia_gpu_runtime_drain',
       '_giulia_gpu_runtime_release','_giulia_gpu_runtime_quarantine',
+      '_giulia_gpu_runtime_reserve','_giulia_gpu_runtime_cancel',
       '_giulia_gpu_submit_encode','_giulia_gpu_submit_init','_giulia_gpu_submit',
-      '_giulia_gpu_submit_poll','_giulia_gpu_submit_invalidate')
+      '_giulia_gpu_submit_poll','_giulia_gpu_submit_invalidate') + tuple(
+      '_giulia_gpu_power_owner_' + name for name in (
+          'initialize','register','acquire','release','invalidate','unregister','status'))
 
 
 def linked_functions(kernel):
