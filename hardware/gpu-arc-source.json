@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OnePlusOSS/android_kernel_oneplus_sm8650",
+  "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+  "files": [
+    {
+      "path": "drivers/soc/qcom/cmd-db.c",
+      "bytes": 10087,
+      "sha256": "fd157e690434660c2b12358d23ea2a26cbee6bf9cebb632f39b9b23348869ade",
+      "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/soc/qcom/cmd-db.c"
+    },
+    {
+      "path": "drivers/regulator/rpmh-regulator.c",
+      "bytes": 64580,
+      "sha256": "58e23b60eaf05dd3fa581e9639e8c15b306371899dbe4435b039744b3f1acb8e",
+      "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/regulator/rpmh-regulator.c"
+    },
+    {
+      "path": "include/soc/qcom/cmd-db.h",
+      "bytes": 1419,
+      "sha256": "714194575227dfceca8c385d1d70e0d6d23afce8759f591f65169f65118afc02",
+      "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/include/soc/qcom/cmd-db.h"
+    },
+    {
+      "path": "include/dt-bindings/regulator/qcom,rpmh-regulator-levels.h",
+      "bytes": 3059,
+      "sha256": "d8feddd25fe3aa55255f8967a8899adc7e9f72bdf300c8261691c1e7f2e90413",
+      "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/include/dt-bindings/regulator/qcom,rpmh-regulator-levels.h"
+    }
+  ],
+  "format": {
+    "header_bytes": 144,
+    "slaves": 8,
+    "slave_header_bytes": 16,
+    "entry_bytes": 24,
+    "resource_id_bytes": 8,
+    "arc_type": 3,
+    "aux_element_bytes": 2,
+    "max_arc_levels": 16,
+    "aux_zero_padding": "trailing, except index 0 may be zero"
+  },
+  "scope": "Private stable RAM snapshot decoder and logical level selection only; no RPMh transport or authority",
+  "current_device_cmd_db_acquired": false,
+  "production_provider_bound": false,
+  "hardware_validated": false,
+  "oracle": "Original public cmd-db lookup and rpmh_regulator_load_arc_level_mapping, extracted for valid host fixtures only; never in XNU"
+}

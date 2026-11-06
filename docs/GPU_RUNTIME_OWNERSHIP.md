@@ -94,6 +94,10 @@ GCC 两路 GPU 父时钟分支已新增独立的固定寄存器事务和 native 
 详见 [GPU_GCC_PARENTS.md](GPU_GCC_PARENTS.md)。它仍无真实平台授权源或
 生产调用者，也不覆盖 PLL、供电和 GPUCC；下列准入项不能据此勾选。
 
+ARC 逻辑等级／Command DB 的有界解析与离线规划见
+[GPU_ARC_LEVELS.md](GPU_ARC_LEVELS.md)。它没有 RPMh transport 或当前启动
+授权，不代表电压 provider 已实现，也不能据此放宽真机准入。
+
 ## power-only 测试的准入清单
 
 下面全部获得证据之前，不打包启用硬件访问的测试镜像：

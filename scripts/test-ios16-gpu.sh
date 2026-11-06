@@ -176,6 +176,7 @@ python3 tests/ios16_gpu_ownership_audit.py
 python3 tests/ios16_gpu_submission_linkage.py
 python3 tests/ios16_gpu_power_owner.py
 python3 tests/ios16_gpu_parents.py
+python3 tests/ios16_gpu_arc.py
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
     -DGG_HOST_TEST tests/ios16_gpu_stack.c ios16/gpu/giulia_gpu_stack.c -o "$tmp/stack"
 "$tmp/stack"

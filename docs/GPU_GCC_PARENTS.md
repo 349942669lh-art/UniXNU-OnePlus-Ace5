@@ -92,8 +92,10 @@ field preservation, ticket capacity/staleness, BUSY, clean detach versus
 revoke, and invalidation waiting for an in-flight callback.
 
 The full GPU regression includes this test. The post-link checker now
-requires 80 executable external definitions (the previous 68 plus 5 core and
-7 native parent functions) and the new open marker. Host tests and native
+retains these 80 executable external definitions (the previous 68 plus 5 core
+and 7 native parent functions). The later [ARC snapshot-only subset](GPU_ARC_LEVELS.md)
+adds 3 more and its own snapshot-only marker, for a current total of 83
+definitions; the parent-open marker remains required. Host tests and native
 compilation/linkage are not hardware validation. Real resource handoff,
 voltage/PLL/power backend, SMMU/GMU readiness, CP/fence submission and compositor
 integration remain separate unfinished work; `acceleration` remains false.
