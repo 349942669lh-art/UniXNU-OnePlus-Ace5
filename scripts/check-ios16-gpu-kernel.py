@@ -17,6 +17,7 @@ MARKERS = (
     b'GIULIA GPU: runtime_lease_abi=1 native_submit_abi=1 runtime_provider_bound=0 submit_provider_bound=0',
     b'GIULIA GPU POWER OWNER: abi=1 registered=',
     b'GIULIA GPU POWER OWNER: start code=',
+    b'GIULIA GPU PARENT: open code=',
     b'GIULIA REG: disabled during GPU power-only test',
     b'GIULIA GPU HFI: table_iova=',
     b'GIULIA GPU HFI: query_ack=1',
@@ -64,7 +65,10 @@ SYMBOLS = tuple('_giulia_gpu_' + name for name in (
       '_giulia_gpu_submit_encode','_giulia_gpu_submit_init','_giulia_gpu_submit',
       '_giulia_gpu_submit_poll','_giulia_gpu_submit_invalidate') + tuple(
       '_giulia_gpu_power_owner_' + name for name in (
-          'initialize','register','acquire','release','invalidate','unregister','status'))
+          'initialize','register','acquire','release','invalidate','unregister','status')) + tuple(
+      '_ggcp_' + name for name in ('init','acquire','release','close','quarantine')) + tuple(
+      '_giulia_gpu_parents_' + name for name in (
+          'initialize','open','acquire','release','close','invalidate','status'))
 
 
 def linked_functions(kernel):

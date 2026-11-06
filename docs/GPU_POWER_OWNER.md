@@ -103,7 +103,9 @@ power 生命周期后再唤醒 IOService stop；隔离时保留 host backing。
   无 source 拒绝、legacy 路径隔离和失败 stop 的内存保留。
 - GPU post-link checker 追加 7 个真实 C-linkage coordinator 定义和 2 个
   staged runtime 定义要求，不能仅凭日志字符串通过；旧 59 个定义要求完整
-  保留，总计 68。
+  保留，此 coordinator 版本总计 68。后续
+  [GCC 父分支子集](GPU_GCC_PARENTS.md) 再追加 12 个定义，当前总计 80；
+  该子集没有注册到本 coordinator，不代表完整 source 已存在。
 
 下一步仍需实现并证实原厂 source：真正的 firmware/VM 交接路径、常驻
 clock/regulator/带宽策略及配置可访问性。完成前不安排 power-only 真机测试。

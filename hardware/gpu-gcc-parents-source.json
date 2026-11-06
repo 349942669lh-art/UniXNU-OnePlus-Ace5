@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OnePlusOSS/android_kernel_oneplus_sm8650",
+  "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+  "sources": {
+    "drivers/clk/qcom/gcc-pineapple.c": "5f52b2c960a94a1385c571748ab54eb83aac079038850c5ffdbe44ec937efb59",
+    "drivers/clk/qcom/clk-branch.c": "c47d1b70f8b008d7b41b25c9114fdec73eadb7167fa365d0d330231d2ace0b9e"
+  },
+  "register": {"gcc_base": 1048576, "offset": 335872, "physical_page": 1384448, "map_bytes": 4096, "page_offset": 0, "width_bits": 32},
+  "branches": [
+    {"name": "gcc_gpu_gpll0_clk_src", "bit": 15, "parent": "gcc_gpll0", "required_hz": 600000000},
+    {"name": "gcc_gpu_gpll0_div_clk_src", "bit": 16, "parent": "gcc_gpll0_out_even", "required_hz": 300000000}
+  ],
+  "settle": {"policy": "BRANCH_HALT_DELAY", "microseconds": 10, "halt_bit_polling": false},
+  "register_transactions_implemented": true,
+  "production_platform_authority_supplied": false,
+  "automatic_registration": false,
+  "hardware_validated": false,
+  "not_implemented": ["Current-boot physical/VM resource handoff", "GPLL0 PLL/postdivider programming and supply control", "GPUCC and voltage/RPMh/ACD providers", "GPU command submission and display/Metal integration"]
+}

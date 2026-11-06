@@ -90,6 +90,10 @@ UEFI 规范明确终止 Boot Services 后不能继续调用它们。当前 provi
 与同时丢权、反序 release 及 drain 中丢权。执行真实 runtime/submission C
 代码和真实 broker 算法，硬件 callback 是替身；不是 MMIO 或 GPU 执行测试。
 
+GCC 两路 GPU 父时钟分支已新增独立的固定寄存器事务和 native executor，
+详见 [GPU_GCC_PARENTS.md](GPU_GCC_PARENTS.md)。它仍无真实平台授权源或
+生产调用者，也不覆盖 PLL、供电和 GPUCC；下列准入项不能据此勾选。
+
 ## power-only 测试的准入清单
 
 下面全部获得证据之前，不打包启用硬件访问的测试镜像：
