@@ -1,0 +1,33 @@
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -108,6 +108,7 @@
+ 	IOReturn setDisplayPower(uint64_t requested);
+ 	bool          fDirty;
+ 	uint32_t      fFlushTicks;    /* vsync ticks between panel copies */
++	bool          fCopy64;        /* opt-in packed stores to normal WC panel RAM */
+ 	bool          fPerfEnabled;   /* opt-in aggregate timings, never a sampler */
+ 	struct gfp_stats fPerf;        /* vsync workloop owns all fields */
+ 
+@@ -200,6 +201,10 @@
+ 	if(!fDisplayPowerLock)return false;
+ 	fDisplayRegisters=0;fDisplayPowerOff=false;
+ 	bzero(&fDisplayPower,sizeof(fDisplayPower));
++	int copy64 = 0;
++	PE_parse_boot_argn("sweetfb_copy64", &copy64, sizeof(copy64));
++	fCopy64 = copy64 == 1;
++	IOLog("GIULIA FB COPY: packed64=%u (CPU only; no GPU)\n", (unsigned)fCopy64);
+ 	int perf = 0;
+ 	PE_parse_boot_argn("sweetfb_perf", &perf, sizeof(perf));
+ 	fPerfEnabled = perf == 1;
+@@ -382,9 +387,9 @@
+ 		if (address && bpe == 4 && s->elementWidth == 1 && s->elementHeight == 1 &&
+ 		    s->pixelFormat == SWEET_FB_FORMAT_BGRA && s->memory) {
+ 			struct gd_rect source = { sx, sy, sw, sh }, destination = { dx, dy, w, h };
+-			(void)gd_present((void *)fPixels, (size_t)fRowBytes * fHeight,
++			(void)gd_present_mode((void *)fPixels, (size_t)fRowBytes * fHeight,
+ 			    (const void *)address, s->memory->getLength(), s->offset,
+-			    s->width, s->height, s->bytesPerRow, source, destination);
++			    s->width, s->height, s->bytesPerRow, source, destination, fCopy64 ? 1U : 0U);
+ 		}
+ 		s->release();
+ 	}

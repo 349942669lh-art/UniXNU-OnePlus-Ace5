@@ -223,6 +223,9 @@ def main():
         # Diagnostic-only timings; default off, no scheduling/rendering changes.
         shutil.copyfile(Path(__file__).resolve().parents[1]/'ios16/0095-giulia-display-timing.patch',
                         a.out/'0095-giulia-display-timing.patch')
+        # Explicit boot-argument opt-in; no cache/MMIO/GPU/scheduling changes.
+        shutil.copyfile(Path(__file__).resolve().parents[1]/'ios16/0096-giulia-packed-panel-copy.patch',
+                        a.out/'0096-giulia-packed-panel-copy.patch')
         from ios16_modules import emit_input_modules
         emit_input_modules(a.out, Path(__file__).resolve().parents[1], touch=a.touch)
         from ios16_modules import emit_optional_modules

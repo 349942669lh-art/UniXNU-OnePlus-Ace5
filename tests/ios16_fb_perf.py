@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='fb-perf-') as work:
     base = temp / 'baseline'
     base.mkdir()
     for patch in sorted(PROFILE.glob('*.patch')):
-        if patch.name == PATCH:
+        if patch.name in (PATCH, '0096-giulia-packed-panel-copy.patch'):
             continue
         run(['git', 'apply', '--whitespace=nowarn'] +
             ['--include=iokit/Kernel/arm/' + f for f in FILES] + [str(patch)], base)

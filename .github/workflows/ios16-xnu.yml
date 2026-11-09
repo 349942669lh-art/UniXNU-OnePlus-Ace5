@@ -189,6 +189,9 @@ jobs:
           python3 tests/ios16_terminal_profile.py profile
           if [ '${{ inputs.profile }}' = gui ]; then
             python3 tests/ios16_fb_perf.py profile
+            python3 tests/ios16_copy64_profile.py profile
+            clang -std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all tests/ios16_display_copy64.c -o /tmp/display-copy64-test
+            /tmp/display-copy64-test
           fi
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I profile-source/vermeer tests/ios16_dma.c -o /tmp/dma-test
           /tmp/dma-test
@@ -239,6 +242,7 @@ jobs:
           fi
           if [ '${{ inputs.profile }}' = gui ]; then
             python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert b'GIULIA FBPERF: window_ns=' in b and b'sweetfb_perf' in b"
+            python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert b'GIULIA FB COPY: packed64=%u (CPU only; no GPU)' in b and b'sweetfb_copy64' in b"
             python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert b'GIULIA DISPLAY POWER: request=' in b and b'GiuliaDisplayPowerFrozen' in b"
             python3 -c "from pathlib import Path; b=Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes(); assert all(m in b for m in (b'GIULIA KEYS: observer polling active',b'GIULIA KEYS: compiled=1',b'GIULIA SLIDER: compiled=1',b'keys.status',b'slider.status'))"
             python3 -c "from pathlib import Path; assert b'GIULIA AMFI: trust catalogue ready;' in Path('dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes()"

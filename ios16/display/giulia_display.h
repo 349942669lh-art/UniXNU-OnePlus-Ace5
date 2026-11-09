@@ -26,9 +26,9 @@ static inline int64_t gd_ceil(int64_t value,unsigned mul,unsigned div) {
  * Negative destination origins are clipped without shifting source content.
  * Out-of-range source rectangles are rejected rather than reading padding.
  */
-static inline int gd_present(void *panel,size_t panel_bytes,const void *source,
+static inline int gd_present_mode(void *panel,size_t panel_bytes,const void *source,
     size_t source_bytes,size_t offset,unsigned width,unsigned height,unsigned stride,
-    struct gd_rect src,struct gd_rect dst) {
+    struct gd_rect src,struct gd_rect dst,unsigned packed64) {
     if(!panel || !source || ((uintptr_t)panel&3) || ((uintptr_t)source&3) || (offset&3) || (stride&3) ||
         panel_bytes<(size_t)GD_STRIDE*GD_HEIGHT || !width || !height || width>16384 || height>16384 ||
         stride<(uint64_t)width*4 || src.x<0 || src.y<0 || src.w<=0 || src.h<=0 || dst.w<=0 || dst.h<=0 ||
@@ -53,8 +53,35 @@ static inline int gd_present(void *panel,size_t panel_bytes,const void *source,
         unsigned sy=(unsigned)(src.y+(logical-dst.y)*src.h/dst.h);
         const uint32_t *row=(const uint32_t *)(base+(uint64_t)sy*stride);
         uint32_t *out=(uint32_t *)((uint8_t *)panel+(size_t)y*GD_STRIDE);
-        for(unsigned x=x0;x<x1;x++)out[x]=row[columns[x]];
+        unsigned x=x0;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        /* Normal WriteCombine panel RAM, NOT device registers. Keep every
+         * 64-bit destination naturally aligned; never read panel memory.
+         * Fixed-size builtin copies avoid type-punning/strict-aliasing UB.
+         * No NEON/FPU is used by the kernel's general-register-only build.
+         * The source gather, bounds, pixel order and transform are unchanged.
+         */
+        if(packed64 == 1) {
+            if(x<x1 && ((uintptr_t)(out+x)&7)) {out[x]=row[columns[x]];x++;}
+            for(;x+3<x1;x+=4) {
+                uint64_t lo=(uint64_t)row[columns[x]] | ((uint64_t)row[columns[x+1]]<<32);
+                uint64_t hi=(uint64_t)row[columns[x+2]] | ((uint64_t)row[columns[x+3]]<<32);
+                __builtin_memcpy(out+x,&lo,sizeof(lo));
+                __builtin_memcpy(out+x+2,&hi,sizeof(hi));
+            }
+        }
+#else
+        (void)packed64;
+#endif
+        for(;x<x1;x++)out[x]=row[columns[x]];
     }
     return 1;
+}
+/* Preserve the original scalar default. The kernel opts in explicitly. */
+static inline int gd_present(void *panel,size_t panel_bytes,const void *source,
+    size_t source_bytes,size_t offset,unsigned width,unsigned height,unsigned stride,
+    struct gd_rect src,struct gd_rect dst) {
+    return gd_present_mode(panel,panel_bytes,source,source_bytes,offset,width,height,
+                           stride,src,dst,0);
 }
 #endif
