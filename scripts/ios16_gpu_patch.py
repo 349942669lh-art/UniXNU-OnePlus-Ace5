@@ -7,7 +7,8 @@ import difflib
 def gpu_patch(out, root):
     platform_patch(out, root)
     # Anchor on AMFI, present in every GUI profile, regardless of Wi-Fi selection.
-    units = [p.name for p in sorted((root/'ios16/gpu').glob('giulia_gpu_*.c'))]
+    units = [p.name for p in sorted((root/'ios16/gpu').glob('giulia_gpu_*.*'))
+             if p.suffix in ('.c', '.cpp')]
     added = ['iokit/Kernel/arm/GiuliaGPU.cpp                                   optional iokitcpp\n']
     added += ['iokit/Kernel/arm/'+name+' optional iokitcpp\n' for name in units]
     patch = ('--- a/iokit/conf/files.arm64\n+++ b/iokit/conf/files.arm64\n'

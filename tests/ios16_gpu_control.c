@@ -23,8 +23,8 @@ static enum gg_resource_result acquire(void *p,unsigned id,uint32_t value,uint64
 {
     struct power_peer *f=p; ++f->acquires;
     assert(value==(id==GGR_GMU_RATE?625000000u:id==GGR_HUB_RATE?200000000u:1));
-    if(f->fail==id+1) return f->uncertain?GGR_UNCERTAIN:GGR_UNCHANGED_ERROR;
-    f->held|=1u<<id; *token=id+100;return GGR_OK;
+    if(f->fail==id+1) return f->uncertain?GGRC_UNCERTAIN:GGRC_UNCHANGED_ERROR;
+    f->held|=1u<<id; *token=id+100;return GGRC_OK;
 }
 static int release(void *p,unsigned id,uint64_t token)
 {
@@ -43,7 +43,7 @@ static void power_tests(void)
         struct gg_power_ops o={&f,resolve,pquiet,acquire,release,observe,delay,trace};
         f.fail=i;f.ready=f.stopped=1;
         assert(gg_power_acquire(&o,&s)==(i?GGC_PROVIDER:GGC_OK));
-        if(!i) {assert(s.ready && s.held==0x3ff);assert(!gg_power_release(&o,&s));}
+        if(!i) {assert(s.ready && s.held==((1u<<GGR_COUNT)-1));assert(!gg_power_release(&o,&s));}
         else {assert(s.diag.failure.phase==i-1 && s.diag.failure.operation==GGD_ACQUIRE);}
         assert(!s.held && !f.held && !s.quarantined);++cases;
     }

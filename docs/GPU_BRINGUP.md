@@ -68,6 +68,13 @@ SHA256，打包时才通过 `embed-gpu-firmware.py` 加入只读 `__GPU_FW` 段�
 模式 2 不使能任何时钟或电源，不写 SMMU，也不读取 GX GPU 寄存器。
 观察结果通过 USB 日志及 IORegistry 的 `PowerObservation` 输出。
 服务始终声明 `HardwareReady=false`，不发布 Metal 或 AGX 加速器。
+固件/RAM 资格验证可额外使用 `giulia_gpu=1 giulia_gpu_hostonly=1`。
+该 opt-in 隔离锁只接受模式 1；非零且不为 1 的隔离值或与模式 2/3
+组合时服务拒绝启动。隔离期间 worker 仅分发 `gpu.status`、`gpu.stack`；
+其余 GPU mailbox 请求（包括只读 MMIO 观察）和原始 `gpu.dev` 均被拒绝，
+周期 Gunyah/HFI pump 不运行。主机内存分配、普通 RAM 映射、页表准备和
+缓存维护仍会执行；这不是 GPU 上电、命令提交或加速测试。
+未提供隔离参数时保留原来的显式开发命令行为。
 启动失败或服务停止时释放当前阶段的主机内存和 CPU 映射；这仅适用于当前
 尚无 GPU DMA 的阶段，后续硬件接管必须加入停机及失效确认后才能释放。
 

@@ -53,6 +53,8 @@ if gpu_pack:
         raise SystemExit('GPU mode 3 requires the compiled UEFI power handoff consumer')
     if metadata.get('output_sha256')!=hashlib.sha256(kernel).hexdigest() or metadata.get('boot_args_bytes')!=736:
         raise SystemExit('Kernel handoff metadata mismatch')
+    check_kernel=runpy.run_path(str(root/'scripts/check-ios16-gpu-kernel.py'))['check_kernel']
+    check_kernel(kernel)
     # Validate the exact insertion order, both pinned packs and header capacity
     # before tests, loader edits or the expensive UEFI build.
     for name,path in (('wifi',wifi_pack),('gpu',gpu_pack)):
@@ -161,6 +163,7 @@ files += [*Path('ios16/common').glob('*.h'), *Path('ios16/platform').glob('*'),
           Path('scripts/ios16_modules.py'), Path('scripts/ios16_module_registry.py')]
 if (out/'gpu-offline-checks.json').exists():
     files += [Path('ios16/gpu/GiuliaGPU.cpp'),*Path('ios16/gpu').glob('giulia_gpu_*.c'),
+              *Path('ios16/gpu').glob('giulia_gpu_*.cpp'),
               *Path('ios16/gpu').glob('giulia_gpu_*.h'),*Path('ios16/vendor').rglob('*'),
               Path('scripts/ios16_gpu_patch.py'),Path('scripts/ios16_gpu_runtime.py'),
               Path('scripts/embed-gpu-firmware.py'),Path('scripts/ios16_gpu_power.py'),

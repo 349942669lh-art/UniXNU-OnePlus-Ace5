@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from ios16_gpu_gunyah_irq_patch import _GLUE
+from ios16_gpu_gunyah_irq_patch import _GLUE, _CPU_GLUE
 
 DECLARATIONS = '''#include "giulia_gpu_gunyah_irq.h"
 #define ARM64_BOARD_CONFIG_SWEET 1
@@ -148,8 +148,8 @@ def run() -> None:
         native = work / 'irq-native.c'
         executable = work / 'irq-host'
         assembly = work / 'irq-native.s'
-        host.write_text(HOST + host_glue + HOST_TEST, encoding='utf-8')
-        native.write_text(NATIVE + _GLUE, encoding='utf-8')
+        host.write_text(HOST + _CPU_GLUE + host_glue + HOST_TEST, encoding='utf-8')
+        native.write_text(NATIVE + _CPU_GLUE + _GLUE, encoding='utf-8')
         common = ['-std=c11', '-Wall', '-Wextra', '-Werror', *include_flags(ROOT)]
         subprocess.run([os.environ.get('CC', 'cc'), *common,
             '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-g',
@@ -161,9 +161,9 @@ def run() -> None:
         assert re.search(r'\bdsb\s+sy\b', text), 'Native GIC barrier missing'
         assert re.search(r'\bstr\s+w\d+,', text), 'Native 32-bit register writes missing'
         for name in ('claim', 'owns', 'invalidate', 'guard_begin', 'guard_end',
-                     'dispatch', 'handler_registered', 'controller_changed'):
+                     'dispatch', 'handler_registered', 'controller_changed', 'cpu_uncontended'):
             assert re.search(r'^_giulia_gpu_gunyah_irq_' + name + r':', text, re.M)
-        print('Native Gunyah IRQ glue emits all eight Darwin/AArch64 exports, 32-bit MMIO and DSB; minimal declarations, no hardware execution')
+        print('Native Gunyah IRQ glue emits all nine Darwin/AArch64 exports, 32-bit MMIO and DSB; minimal declarations, no hardware execution')
 
 
 if __name__ == '__main__':

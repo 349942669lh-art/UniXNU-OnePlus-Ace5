@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "scope": "Guarded native IOKit mapping/executor for source-assigned dedicated APPS DRV2 ACTIVE TCS only",
+  "drv": {
+    "base": 396492800,
+    "bytes": 65536,
+    "id": 2,
+    "tcs_offset": 3328,
+    "active_mask": 7,
+    "intid": 37
+  },
+  "static_board_source": {
+    "project": "SM8650_B_master",
+    "path": "vnd/kernel_platform/qcom/proprietary/devicetree/qcom/pineapple.dtsi",
+    "source_lines": [725, 764],
+    "method": "Authorized browser UIA, continuous line-numbered text reconstruction, NOT raw download or Git blob",
+    "reconstructed_sha256": "e01a859fd96141cb251f71896a72c7a8407b56adc0faeef5a0c9ccd1aebc1183",
+    "internal_revision": null,
+    "exact_device_firmware_match_verified": false,
+    "private_source_uploaded": false
+  },
+  "register_protocol_reference": "hardware/gpu-rsc-source.json",
+  "supported_versions": [27, 30],
+  "scope_restrictions": [
+    "Explicit source take required before mapping or metadata read",
+    "No TCS auto-selection; only an already-assigned ACTIVE TCS 0..2",
+    "No IRQ_ENABLE writes, foreign IRQ clears or inherited-command adoption",
+    "No solver, HW channel, borrowed wake/sleep, general RPMh or raw register API",
+    "ARC aggregation approval must remain reserved through real completion",
+    "Close requires source settlement proof; completion is not vote withdrawal",
+    "Uncertain take, loss, timeout or uncertain drop retains source and exclusion without retry"
+  ],
+  "production_authority_bound": false,
+  "hardware_validated": false,
+  "power_only_boot_admissible": false,
+  "acceleration": false
+}

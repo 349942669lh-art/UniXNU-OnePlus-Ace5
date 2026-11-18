@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OnePlusOSS/android_kernel_oneplus_sm8650",
+  "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+  "files": [
+    {
+      "path": "drivers/soc/qcom/rpmh-rsc.c",
+      "bytes": 53088,
+      "sha256": "d86f00f3abe2383d101718edf17e9921251b196b41bdcd8051feef9e6518a3b7",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/soc/qcom/rpmh-rsc.c"
+    },
+    {
+      "path": "drivers/soc/qcom/rpmh-internal.h",
+      "bytes": 7540,
+      "sha256": "db839f4a59a28613a5c42fc230a30b9179c677d17bff5fb2dc6ad182fca69b1d",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/soc/qcom/rpmh-internal.h"
+    },
+    {
+      "path": "drivers/soc/qcom/rpmh.c",
+      "bytes": 18545,
+      "sha256": "d1ce25f7198873be80612e38c0346ce84c9e8096d0b8df7fc246ad6d48ac2bd2",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/soc/qcom/rpmh.c"
+    },
+    {
+      "path": "include/soc/qcom/tcs.h",
+      "bytes": 2291,
+      "sha256": "3183aaa5964d6354cdb47cd87930c084d1feaf19e7481fefe1b973dd102d8c8f",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/include/soc/qcom/tcs.h"
+    }
+  ],
+  "scope": "Restricted one-command owned dedicated ACTIVE TCS, explicit v2.7 or v3.0 legacy layout; no native source/registration/mapping/aggregation",
+  "production_provider_bound": false,
+  "hardware_validated": false
+}

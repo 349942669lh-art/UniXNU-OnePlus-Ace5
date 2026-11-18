@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OnePlusOSS/android_kernel_oneplus_sm8650",
+  "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+  "files": [
+    {
+      "path": "drivers/clk/qcom/gpucc-pineapple.c",
+      "bytes": 18014,
+      "sha256": "bf45aa00b598f55632dee3b4a7d0f8ac6a1dffb84bf82fdbe892f0a5c00b9284",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/gpucc-pineapple.c"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-branch.c",
+      "bytes": 11218,
+      "sha256": "c47d1b70f8b008d7b41b25c9114fdec73eadb7167fa365d0d330231d2ace0b9e",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/clk-branch.c"
+    }
+  ],
+  "gpucc_base": 64552960,
+  "map_bytes": 38912,
+  "branches": [
+    {
+      "id": 0,
+      "name": "gpu_cc_ahb_clk",
+      "offset": 37148,
+      "policy": "BRANCH_HALT_DELAY",
+      "aon": false
+    },
+    {
+      "id": 1,
+      "name": "gpu_cc_cx_gmu_clk",
+      "offset": 37180,
+      "policy": "BRANCH_HALT_VOTED",
+      "aon": true
+    },
+    {
+      "id": 2,
+      "name": "gpu_cc_cxo_clk",
+      "offset": 37188,
+      "policy": "BRANCH_HALT",
+      "aon": false
+    },
+    {
+      "id": 3,
+      "name": "gpu_cc_hlos1_vote_gpu_smmu_clk",
+      "offset": 28672,
+      "policy": "BRANCH_HALT_VOTED",
+      "aon": false
+    },
+    {
+      "id": 4,
+      "name": "gpu_cc_hub_aon_clk",
+      "offset": 37864,
+      "policy": "BRANCH_HALT_VOTED",
+      "aon": true
+    },
+    {
+      "id": 5,
+      "name": "gpu_cc_hub_cx_int_clk",
+      "offset": 37192,
+      "policy": "BRANCH_HALT_VOTED",
+      "aon": true
+    }
+  ],
+  "poll_bound": 200,
+  "poll_delay_us": 1,
+  "delay_policy_us": 10,
+  "supported_effective_rate_min_hz": 1000000,
+  "native_source_bound": false,
+  "hardware_validated": false,
+  "power_only_test_admissible": false,
+  "not_implemented": [
+    "GPUCC PLL/RCG rates and supplies",
+    "CX GDSC and native shared ARC backing",
+    "CFG/ACD/interconnect provider",
+    "Current-boot resource ownership/handoff",
+    "GMU/GPU execution and Metal"
+  ]
+}

@@ -108,6 +108,10 @@ public:
     IOLock lock;IOLock *runtimeLock=&lock;
     bool workerRunning=false,stopping=false,terminalOwner=false;
     unsigned mode=1,firmwarePowerState=0,observations=0;
+    bool hostOnly=false;
+    bool powerOnlyTest=false;
+    void powerOnlyStart(){assert(false && "Gunyah fixture must not enter the power-only path");}
+    void powerOnlyStop(){assert(false && "Gunyah fixture must not enter the power-only path");}
     struct {unsigned stage=0,valid_fields=0;} powerObservation;
     std::atomic<unsigned> references{1},releaseCalls{0},resourceAttempts{0},resourcesFreed{0};
     void retain(){assert(!gunyahOwner && !gunyahPinned);++references;}
@@ -384,5 +388,9 @@ with tempfile.TemporaryDirectory(prefix='gpu-gunyah-runtime-') as folder:
                     *include_flags(ROOT), str(unit), '-o', str(binary)], check=True)
     environment = dict(os.environ)
     environment['UBSAN_OPTIONS'] = 'halt_on_error=1:print_stacktrace=1'
-    environment['ASAN_OPTIONS'] = 'detect_leaks=1'
+    # LeakSanitizer is unavailable on the macOS arm64 runner. Keep ASan/UBSan
+    # enabled everywhere and explicit leak detection on supported Linux hosts.
+    leak_check = '0' if _module_sys.platform == 'darwin' else '1'
+    environment['ASAN_OPTIONS'] = ':'.join(filter(None,
+        (environment.get('ASAN_OPTIONS', ''), 'detect_leaks=' + leak_check)))
     subprocess.run([str(binary)], check=True, env=environment)

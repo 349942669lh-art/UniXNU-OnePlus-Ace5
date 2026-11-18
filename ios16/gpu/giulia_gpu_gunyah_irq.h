@@ -141,6 +141,7 @@ void giulia_gpu_gunyah_irq_invalidate(const void *,uint64_t);
 int giulia_gpu_gunyah_irq_guard_begin(const void *,uint64_t,uint32_t,uint32_t,unsigned *);
 int giulia_gpu_gunyah_irq_guard_end(const void *,uint64_t,uint32_t,uint32_t,unsigned);
 int giulia_gpu_gunyah_irq_dispatch(uint32_t);
+int giulia_gpu_gunyah_irq_cpu_uncontended(void);
 void giulia_gpu_gunyah_irq_handler_registered(void);
 void giulia_gpu_gunyah_irq_controller_changed(void);
 #ifdef __cplusplus

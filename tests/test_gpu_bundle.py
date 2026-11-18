@@ -6,6 +6,7 @@ from ios16_sources import source_path
 import hashlib
 import json
 import os
+import runpy
 from pathlib import Path
 import shutil
 import struct
@@ -29,7 +30,8 @@ class UnifiedGpuBundle(unittest.TestCase):
             (self.repo / name).mkdir(parents=True)
         for name in ('build-ios16-wifi-bringup.sh', 'embed-wifi-firmware.py', 'embed-gpu-firmware.py',
                      'prepare-ios16-gpu-power.py', 'ios16_gpu_power.py', 'ios16_platform.py',
-                     'prepare-ios16-gpu-gunyah.py','ios16_gpu_gunyah.py'):
+                     'prepare-ios16-gpu-gunyah.py','ios16_gpu_gunyah.py',
+                     'check-ios16-gpu-kernel.py'):
             shutil.copyfile(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         self.packs = {}
         self.digests = {}
@@ -69,7 +71,8 @@ class UnifiedGpuBundle(unittest.TestCase):
         overlay = self.repo / 'uefi-overlay/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe'
         (overlay / 'Driver.c').write_text('fixture')
         for name in ('GiuliaWiFi.cpp', 'GiuliaGPU.cpp', 'giulia_display.h', 'giulia_sha256.h',
-                     'giulia_gpu_control.c', 'giulia_gpu_control.h'):
+                     'giulia_gpu_control.c', 'giulia_gpu_control.h',
+                     'giulia_gpu_power_owner.cpp'):
             (source_path(self.repo, name)).write_text(name)
         vendor = self.repo / 'ios16/vendor/ArmSmmu4K'
         vendor.mkdir(parents=True)
@@ -131,7 +134,16 @@ if report.get('gpu_mode')==3:
                         b'GIULIA GPU: firmware pack mapped read-only and digest verified\0'
                         b'GIULIA GPU: UEFI power handoff\0'
                         b'GIULIA GPU: boot Gunyah resources\0')
-        kernel[0x1000:0x1000+len(markers)] = markers
+        marker_offset = 0x1000
+        if gpu:
+            linked_fixture = runpy.run_path(str(ROOT / 'tests/test_gpu_kernel.py'))['LinkedGPU']()
+            linked_fixture.setUp()
+            kernel = bytearray(linked_fixture.kernel)
+            marker_offset = (len(kernel) + 0x3fff) & ~0x3fff
+            kernel.extend(bytes(marker_offset + 0x4000 - len(kernel)))
+            struct.pack_into('<Q', kernel, 32 + 32, len(kernel))
+            struct.pack_into('<Q', kernel, 32 + 48, len(kernel))
+        kernel[marker_offset:marker_offset+len(markers)] = markers
         self.kernel.write_bytes(kernel)
         self.original_digest = hashlib.sha256(kernel).hexdigest()
         self.kernel.with_suffix('.json').write_text(json.dumps({
@@ -208,6 +220,7 @@ if report.get('gpu_mode')==3:
         self.assertEqual(report['firmware_digests'], {k: v.hex() for k, v in self.digests.items()})
         self.assertFalse(report['acceleration'])
         for name in ('ios16/gpu/giulia_gpu_control.c', 'ios16/gpu/giulia_gpu_control.h',
+                     'ios16/gpu/giulia_gpu_power_owner.cpp',
                      'ios16/vendor/ArmSmmu4K/ArmSmmu4K.c', 'ios16/vendor/ArmSmmu4K/SOURCE.json'):
             source = self.repo / name
             snapshot = self.output / 'runtime-source' / name
@@ -216,6 +229,14 @@ if report.get('gpu_mode')==3:
                                 item['sha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
                                 for item in report['source_files']))
         self.assertTrue((self.output / 'gpu-offline-checks.json').is_file())
+
+    def test_stale_kernel_without_cx_definition_fails_before_build(self):
+        binary = self.kernel.read_bytes().replace(b'_ggcx_enable\0', b'_ggcx_unlink\0')
+        self.kernel.write_bytes(binary)
+        metadata = json.loads(self.kernel.with_suffix('.json').read_text())
+        metadata['output_sha256'] = hashlib.sha256(binary).hexdigest()
+        self.kernel.with_suffix('.json').write_text(json.dumps(metadata))
+        self.rejected('GPU kernel lacks linked implementation: _ggcx_enable')
 
     def test_default_mode_preserves_both_firmware_metadata_and_source(self):
         self.assert_bundle(mode=None)

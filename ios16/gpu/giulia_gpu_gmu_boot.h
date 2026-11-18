@@ -19,7 +19,7 @@ enum {
     GGB_AHB_FENCE_RANGE = 0x23b11,
     GGB_CM3_CFG_RESET = 0x4052,        /* vendor reset value without NMI */
     GGB_BOOT_CONFIG_VALUE = 0x2,
-    GGB_AHB_FENCE_VALUE = 0x8008a32  /* BIT(31) | 0x32 << 18 | 0x8a0 */
+    GGB_AHB_FENCE_VALUE = (1u<<31) | (0x32u<<18) | 0x8a0u
 };
 struct ggb_config {
     uint32_t hfi_iova, vrb_iova, log_iova, log_bytes, chip_rev;

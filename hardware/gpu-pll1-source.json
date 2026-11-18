@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OnePlusOSS/android_kernel_oneplus_sm8650",
+  "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+  "files": [
+    {
+      "sha256": "bf45aa00b598f55632dee3b4a7d0f8ac6a1dffb84bf82fdbe892f0a5c00b9284",
+      "bytes": 18014,
+      "path": "drivers/clk/qcom/gpucc-pineapple.c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/gpucc-pineapple.c"
+    },
+    {
+      "sha256": "c30135f6af3ca9a8774f70b3784e8ff05a57e24d90770bd3a48d8203a9c49ff8",
+      "bytes": 126616,
+      "path": "drivers/clk/qcom/clk-alpha-pll.c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/clk-alpha-pll.c"
+    },
+    {
+      "sha256": "5230cb0c4dff2916835aa2384eabe83581dc75f18ab73fa09fd904da6973b78d",
+      "bytes": 8610,
+      "path": "drivers/clk/qcom/clk-alpha-pll.h",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/clk-alpha-pll.h"
+    }
+  ],
+  "gpucc_base": 64552960,
+  "gpucc_bytes": 38912,
+  "pll1_offset": 4096,
+  "scope": "fixed calibrated standby-to-run PLL1 executor; no cold calibration or native power authority",
+  "nominal_rates_hz": [
+    520000000,
+    1250000000
+  ],
+  "xo_hz": 19200000,
+  "alpha_bits": 16,
+  "poll_bound": 200,
+  "native_source_bound": false,
+  "hardware_validated": false,
+  "power_only_test_admissible": false,
+  "acceleration": false
+}

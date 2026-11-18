@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": "kernel/drivers/clk/qcom/gdsc-regulator.c",
+      "repository": "https://github.com/OnePlusOSS/android_kernel_oneplus_sm8650",
+      "commit": "d763ed47deec55451366c1187f813f2f309d88a7",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_oneplus_sm8650/d763ed47deec55451366c1187f813f2f309d88a7/drivers/clk/qcom/gdsc-regulator.c",
+      "bytes": 30492,
+      "sha256": "fe193af710302e139e45d82a557989c18092e88391741d8e0abfbd9d2cd02685"
+    },
+    {
+      "path": "modules/pineapple-gdsc.dtsi",
+      "repository": "https://github.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+      "commit": "453d8875f815bf9dfad9035982861226a4823a6c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650/453d8875f815bf9dfad9035982861226a4823a6c/kernel_platform/qcom/proprietary/devicetree/qcom/pineapple-gdsc.dtsi",
+      "bytes": 9692,
+      "sha256": "d6255b87b199ea17ffc5a85dc4543dd650a8250f38b4eb625e61fa418700ce93"
+    },
+    {
+      "path": "modules/pineapple.dtsi",
+      "repository": "https://github.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+      "commit": "453d8875f815bf9dfad9035982861226a4823a6c",
+      "url": "https://raw.githubusercontent.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650/453d8875f815bf9dfad9035982861226a4823a6c/kernel_platform/qcom/proprietary/devicetree/qcom/pineapple.dtsi",
+      "bytes": 92018,
+      "sha256": "f383f5702ef7f14b83aaf2a951caced18e0a12ddc9512ba208a4e5b614428bf0"
+    }
+  ],
+  "gpucc_base": 64552960,
+  "map_bytes": 38912,
+  "control_offset": 37128,
+  "status_offset": 37224,
+  "clock_disable_wait": 8,
+  "retain_ff": true,
+  "poll_windows": 2,
+  "polls_per_window": 1500,
+  "native_source_bound": false,
+  "hardware_validated": false,
+  "power_only_test_admissible": false
+}

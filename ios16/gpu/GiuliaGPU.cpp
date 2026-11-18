@@ -5,6 +5,11 @@
  * Automatic startup only prepares memory. Explicit debug ABI2 operations may
  * assign isolated secure memory, configure its context, call SCM/PAS and watch
  * bounded command submission. No accelerator is automatically published.
+ * giulia_gpu_hostonly=1 is an additional isolation latch (requires mode 1):
+ * only status/stack planning are dispatched; device commands and periodic
+ * hardware-side workers are suppressed for firmware/RAM qualification boots.
+ * giulia_gpu_power_test=1 additionally requires mode 3, debug=1 and hostonly=0;
+ * it dispatches only the resident power coordinator and status/stack queries.
  */
 #include <pexpert/arm64/board_config.h>
 #if defined(ARM64_BOARD_CONFIG_SWEET)
@@ -46,14 +51,24 @@ extern "C" { extern unsigned long gPhysBase, gPhysSize, gVirtBase; }
 #include "giulia_gpu_hfi_alloc_pool.h"
 #include "giulia_gpu_hfi_pump.h"
 #include "giulia_gpu_stack.h"
+#include "giulia_gpu_submit.h"
+#include "giulia_gpu_power_owner.h"
 #include "giulia_gpu_share_runtime.h"
 #include "../vendor/ArmSmmu4K/ArmSmmu4K.h"
+
+/* Host bookkeeping is separate from the IOService's 16 KiB allocation. These
+ * records neither allocate secure backing nor grant any device ownership. */
+struct gpu_secure_metadata {
+    IOBufferMemoryDescriptor *descriptors[GGS_SEC_SEGMENTS];
+    uint64_t physical[GGS_SEC_SEGMENTS];
+};
 
 static struct gg_terminal_mailbox gpuTerminal;
 static unsigned devState;
 static uint32_t devArgs[6];
 static struct ggi_owner gpuIpcOwner;
 static struct ggf_registration gpuFenceProvider;
+static void gpuHfiBarrier(void *);
 extern "C" int giulia_gpu_fence_register(const struct ggf_provider *p)
 { return ggfp_register(&gpuFenceProvider,p); }
 extern "C" int giulia_gpu_fence_ipcc_claim(const void *identity,uint64_t epoch)
@@ -131,10 +146,14 @@ class GiuliaGPU : public IOService {
     int memstoreAllocate(uint32_t,uint32_t,uint32_t,uint32_t);
     int memstoreRead(uint32_t);
     int auditMemstoreMappings();
-    IOBufferMemoryDescriptor *secureData[GGS_SEC_SEGMENTS],*secureTables,*scmMemory,*zapMetadata;
+    IOBufferMemoryDescriptor **secureData;
+    struct gpu_secure_metadata *secureMetadata;
+    bool allocateSecureMetadata();
+    void releaseSecureMetadata();
+    IOBufferMemoryDescriptor *secureTables,*scmMemory,*zapMetadata;
     IOMemoryDescriptor *platformMemory[4],*zapMemory;
     IOMemoryMap *platformMaps[4],*zapMap;
-    uint64_t securePA[GGS_SEC_SEGMENTS],secureRoot,scmPA,zapMetadataPA;
+    uint64_t *securePA,secureRoot,scmPA,zapMetadataPA;
     struct ggs_secure_slot secureSlots[GGS_SEC_CHUNKS];
     struct ggs_state scmState;
     bool platformPrepared,platformOwned,platformPoisoned,secureContextActive,zapAuthenticated;
@@ -176,6 +195,14 @@ class GiuliaGPU : public IOService {
     IOLock *runtimeLock;
     bool workerRunning, stopping, terminalOwner;
     unsigned mode, reservationCount, tablePages, leafPages, observations;
+    bool hostOnly;
+    /* Explicit power-only worker. No legacy MMIO/dev/HFI/Gunyah dispatch is
+     * allowed in this mode, even when the native provider refuses or fails. */
+    bool powerOnlyTest,powerOnlyAttached;
+    unsigned powerOnlyCode;
+    void powerOnlyStart();
+    void powerOnlyStop();
+    void powerOnlyReport();
     bool firmwareVerified, hostPrepared;
     bool manualMemoryPinned;
     unsigned hfiIndex,hfiSequence,hfiLastHeader;
@@ -268,14 +295,35 @@ public:
 };
 OSDefineMetaClassAndStructors(GiuliaGPU, IOService)
 
+bool GiuliaGPU::allocateSecureMetadata()
+{
+    if(secureMetadata || secureData || securePA)return false;
+    struct gpu_secure_metadata *records=(struct gpu_secure_metadata *)IOMalloc(sizeof(*records));
+    if(!records)return false;
+    bzero(records,sizeof(*records));
+    secureMetadata=records;secureData=records->descriptors;securePA=records->physical;
+    return true;
+}
+
+void GiuliaGPU::releaseSecureMetadata()
+{
+    /* Match releaseResources: uncertain device ownership retains bookkeeping
+     * as well as the underlying mappings until reset. */
+    if(!secureMetadata || manualMemoryPinned)return;
+    IOFree(secureMetadata,sizeof(*secureMetadata));
+    secureMetadata=NULL;secureData=NULL;securePA=NULL;
+}
+
 bool GiuliaGPU::init(OSDictionary *dictionary)
 {
+    hostOnly=false;
+    powerOnlyTest=powerOnlyAttached=false;powerOnlyCode=GGPO_UNAVAILABLE;
     firmwareMemory=NULL; firmwareMap=NULL; tableMemory=NULL;
     gpuTableMemory=NULL;gmuRoot=gpuRoot=0;
     memstoreMemory=NULL;memstoreFlags=0;memstoreMapped=false;
     ipcMapped=false;ipcFlags=0;
     fenceMapped=false;fenceFlags=0;fenceProvider=NULL;
-    bzero(secureData,sizeof(secureData));bzero(securePA,sizeof(securePA));bzero(secureSlots,sizeof(secureSlots));
+    secureMetadata=NULL;secureData=NULL;securePA=NULL;bzero(secureSlots,sizeof(secureSlots));
     bzero(platformMemory,sizeof(platformMemory));bzero(platformMaps,sizeof(platformMaps));bzero(&scmState,sizeof(scmState));
     secureTables=scmMemory=zapMetadata=NULL;zapMemory=NULL;zapMap=NULL;
     secureRoot=scmPA=zapMetadataPA=0;platformEpoch=platformSnapshotSequence=0;
@@ -306,7 +354,8 @@ bool GiuliaGPU::init(OSDictionary *dictionary)
     /* Process-context bootstrap; IRQ/fence ownership queries never allocate. */
     if(gpr_global_initialize()!=GPR_OK)return false;
 #endif
-    runtimeLock=IOLockAlloc();return runtimeLock!=NULL;
+    if(giulia_gpu_power_owner_initialize()!=GGPO_OK)return false;
+    runtimeLock=IOLockAlloc();return runtimeLock && allocateSecureMetadata();
 }
 
 static bool gpuFirmwareError(unsigned code,uint64_t at,const char *reason,uint64_t expected,uint64_t observed)
@@ -588,6 +637,15 @@ bool GiuliaGPU::start(IOService *provider)
 {
     int requested=0;
     if (!PE_parse_boot_argn("giulia_gpu",&requested,sizeof(requested)) || requested<1 || requested>3) return false;
+    int isolation=0;
+    PE_parse_boot_argn("giulia_gpu_hostonly",&isolation,sizeof(isolation));
+    if(!gg_terminal_hostonly_valid(requested,isolation))return false;
+    hostOnly=isolation==1;
+    int powerTest=0,debug=0;
+    PE_parse_boot_argn("giulia_gpu_power_test",&powerTest,sizeof(powerTest));
+    PE_parse_boot_argn("giulia_debug",&debug,sizeof(debug));
+    if(powerTest && (powerTest!=1 || requested!=3 || hostOnly || debug!=1))return false;
+    powerOnlyTest=powerTest==1;
     IORegistryEntry *root=IORegistryEntry::fromPath("/",gIODTPlane);
     if (!root) return false;
     OSData *model=OSDynamicCast(OSData,root->getProperty("physical-model"));
@@ -611,6 +669,8 @@ bool GiuliaGPU::start(IOService *provider)
     }
     setProperty("GPUChipID",(unsigned long long)0x43051401,32);
     setProperty("GPUModel","Adreno750v2"); setProperty("HardwareReady",false);
+    setProperty("HostOnlyIsolation",hostOnly);
+    IOLog("GIULIA GPU: hostonly=%u mode=%u acceleration=0\n",hostOnly,mode);
     setProperty("BringupStage","host-memory-prepared");
     /* Pool adapter only: it establishes no mapping and performs no device
      * write until the worker is pinned and the platform is healthy. */
@@ -697,7 +757,11 @@ void GiuliaGPU::reportStatus()
     IOLog("GIULIA GPU: command=gpu.status stage=%s mode=%u firmware_verified=%u host_prepared=%u reservations=%u table_pages=%u leaf_pages=%u\n",
         gg_terminal_stage_name(__atomic_load_n(&gpuTerminal.stage,__ATOMIC_ACQUIRE)),mode,
         firmwareVerified,hostPrepared,reservationCount,tablePages,leafPages);
-    IOLog("GIULIA GPU: power_acquired=0 smmu_active=0 gmu_started=0 hardware_ready=0 acceleration=0 device_writes=0\n");
+    if(powerOnlyTest)powerOnlyReport();
+    else IOLog("GIULIA GPU: power_acquired=0 smmu_active=0 gmu_started=0 hardware_ready=0 acceleration=0 device_writes=0\n");
+    /* Transactions are linked, not bound to an authoritative runtime-power,
+     * context or fence backend. Do not report them as active hardware. */
+    if(!powerOnlyTest)IOLog("GIULIA GPU: runtime_lease_abi=1 native_submit_abi=1 runtime_provider_bound=0 submit_provider_bound=0\n");
     IOLog("GIULIA GPU: observations=%u observation_stage=%u valid_fields=%#x\n",
         observations,powerObservation.stage,powerObservation.valid_fields);
     IOLog("GIULIA GPU: host_cache_published=%u cpu_cache=normal-copyback gpu_memory_attribute=normal-nc runtime_cache_ownership=unassigned\n",hostPrepared);
@@ -792,6 +856,7 @@ void GiuliaGPU::hfiCommand(unsigned requests)
 #include "giulia_gpu_hfi_alloc_impl.h"
 #include "giulia_gpu_stack_impl.h"
 #include "giulia_gpu_share_impl.h"
+#include "giulia_gpu_power_owner_impl.h"
 void GiuliaGPU::worker(void *cookie,wait_result_t)
 {
     GiuliaGPU *self=(GiuliaGPU *)cookie;
@@ -799,20 +864,29 @@ void GiuliaGPU::worker(void *cookie,wait_result_t)
     self->gunyahWorker=current_thread();
     if(!self->stopping) {
         __atomic_store_n(&gpuTerminal.stage,(unsigned)GGT_READY,__ATOMIC_RELEASE);
-        if(self->mode==2 || (self->mode==3 && self->firmwarePowerState==GGPH_PREPARED))self->observePower();
+        if(self->powerOnlyTest)self->powerOnlyStart();
+        else if(!self->hostOnly && (self->mode==2 || (self->mode==3 && self->firmwarePowerState==GGPH_PREPARED)))self->observePower();
     }
     while(!self->stopping) {
         if(__atomic_load_n(&devState,__ATOMIC_ACQUIRE)==2) {
             uint32_t args[6];memcpy(args,devArgs,sizeof(args));
-            self->devCommand(args);__atomic_store_n(&devState,0u,__ATOMIC_RELEASE);
+            if(self->hostOnly || self->powerOnlyTest)
+                IOLog("GIULIA GPU: hostonly=%u power_only=%u rejected_dev_token=%u device_dispatch=0\n",self->hostOnly,self->powerOnlyTest,args[0]);
+            else self->devCommand(args);
+            __atomic_store_n(&devState,0u,__ATOMIC_RELEASE);
         }
         unsigned requests=gg_terminal_take(&gpuTerminal);
+        if(self->hostOnly || self->powerOnlyTest) {
+            unsigned rejected=requests&~(GGT_STATUS|GGT_STACK);
+            if(rejected)IOLog("GIULIA GPU: hostonly=%u power_only=%u rejected_requests=%#x device_dispatch=0\n",self->hostOnly,self->powerOnlyTest,rejected);
+            requests&=GGT_STATUS|GGT_STACK;
+        }
         if(requests&GGT_GMU_LOAD)self->gmuCommand(1);
         if(requests&GGT_GMU_START)self->gmuCommand(2);
         if(requests&GGT_GMU_STATUS)self->gmuCommand(0);
         if(requests&GGT_STACK)self->stackPlan();
         if(requests&GGT_SHARE)self->shareCommand();
-        if(requests&(GGT_COMMANDS&~(GGT_STATUS|GGT_OBSERVE|GGT_GMU_COMMANDS)))self->hfiCommand(requests);
+        if(!self->hostOnly && (requests&(GGT_COMMANDS&~(GGT_STATUS|GGT_OBSERVE|GGT_GMU_COMMANDS))))self->hfiCommand(requests);
         if(requests&GGT_OBSERVE) {
             IOLog("GIULIA GPU: command=gpu.observe phase=begin device_writes=0\n");
             self->observePower();
@@ -820,12 +894,13 @@ void GiuliaGPU::worker(void *cookie,wait_result_t)
                 self->observations,self->powerObservation.stage,self->powerObservation.valid_fields);
         }
         if(requests&(GGT_STATUS|GGT_OBSERVE))self->reportStatus();
-        self->gunyahPeriodic();
+        if(!self->hostOnly && !self->powerOnlyTest)self->gunyahPeriodic();
         /* Answer firmware memory requests only while pinned and healthy. The
          * pump is bounded and never retries a refused or unsent reply. */
-        self->hfiPumpOnce(2);
+        if(!self->hostOnly && !self->powerOnlyTest)self->hfiPumpOnce(2);
         IOLockUnlock(self->runtimeLock);IOSleep(25);IOLockLock(self->runtimeLock);
     }
+    if(self->powerOnlyTest)self->powerOnlyStop();
     self->workerRunning=false;
     IOLockWakeup(self->runtimeLock,&self->workerRunning,false);
     IOLockUnlock(self->runtimeLock);
@@ -855,7 +930,7 @@ void GiuliaGPU::releaseResources()
     for(unsigned i=0;i<GGD_CHUNKS;i++)OSSafeReleaseNULL(devMemory[i]);
     /* manualMemoryPinned retains every resource before an ownership/PAS call.
      * No ambiguous secure page is ever returned to the ordinary allocator. */
-    for(unsigned i=0;i<GGS_SEC_SEGMENTS;i++)OSSafeReleaseNULL(secureData[i]);
+    if(secureData)for(unsigned i=0;i<GGS_SEC_SEGMENTS;i++)OSSafeReleaseNULL(secureData[i]);
     OSSafeReleaseNULL(secureTables);OSSafeReleaseNULL(scmMemory);OSSafeReleaseNULL(zapMetadata);
     OSSafeReleaseNULL(zapMap);OSSafeReleaseNULL(zapMemory);
     for(unsigned i=0;i<4;i++){OSSafeReleaseNULL(platformMaps[i]);OSSafeReleaseNULL(platformMemory[i]);}
@@ -892,6 +967,7 @@ void GiuliaGPU::free()
     /* A running worker holds a retain. stop has joined it before releasing
      * resources; failed starts never leave a worker or an open mailbox. */
     releaseResources();
+    releaseSecureMetadata();
     if(terminalOwner){gg_terminal_finish(&gpuTerminal);terminalOwner=false;}
     if(runtimeLock){IOLockFree(runtimeLock);runtimeLock=NULL;}
     IOService::free();

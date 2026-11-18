@@ -54,6 +54,12 @@ static void gm_write(vm_offset_t address,unsigned width,uint64_t value)
 static int gm_command(const char *cmd)
 {
     if(strncmp(cmd,"reg.",4))return 0;
+    /* Enforce isolation even if GPU matching fails or giulia_mmio=1 was
+     * inherited from a debug profile. No raw alias may race the native worker. */
+    int power_test=0;PE_parse_boot_argn("giulia_gpu_power_test",&power_test,sizeof(power_test));
+    if(power_test) {
+        printf("GIULIA REG: disabled during GPU power-only test\n");return 1;
+    }
     int enabled=0;PE_parse_boot_argn("giulia_mmio",&enabled,sizeof(enabled));
     if(!gs_enabled() || enabled!=1) {
         printf("GIULIA REG: disabled; requires giulia_debug=1 giulia_mmio=1\n");return 1;

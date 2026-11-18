@@ -18,6 +18,14 @@ static void *requester(void *cookie)
 }
 int main(void)
 {
+    for(int mode=-2;mode<=5;++mode)for(int isolation=-2;isolation<=3;++isolation) {
+        int expected=(mode==1 || mode==2 || mode==3) &&
+            (isolation==0 || (mode==1 && isolation==1));
+        assert(gg_terminal_hostonly_valid(mode,isolation)==expected);
+    }
+    assert(!gg_terminal_hostonly_valid(1,(-2147483647-1)));
+    assert(!gg_terminal_hostonly_valid(1,2147483647));
+    puts("GPU host-only boot configuration: mode/isolation matrix and extreme values passed");
     struct gg_terminal_mailbox m={0};
     const char *bad[]={"gpu.status ","gpu.observe now","gpu.status\nping","gpu.observe;ping","gpu","gpu.start","GPU.status","",NULL};
     unsigned i;

@@ -1,11 +1,10 @@
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
-@@ -11,6 +11,12 @@
+@@ -11,6 +11,11 @@
  #include <machine/machine_routines.h>
  #include <pexpert/device_tree.h>
  #include <pexpert/arm64/board_config.h>
 +#if defined(ARM64_BOARD_CONFIG_SWEET) && HAS_GIC_V3
-+#include <arm/cpu_data_internal.h>
 +#include "../../iokit/Kernel/arm/giulia_gpu_gunyah_irq.h"
 +static unsigned giulia_gunyah_gic_initialized;
 +static uint64_t giulia_gunyah_gic_bytes;
@@ -13,7 +12,7 @@
  
  
  #if HAS_GIC_V3
-@@ -76,6 +82,9 @@
+@@ -76,6 +81,9 @@
  void
  pe_init_fiq()
  {
@@ -23,7 +22,7 @@
  	int error;
  	DTEntry entry;
  
-@@ -141,6 +150,9 @@
+@@ -141,6 +149,9 @@
  		}
  
  		gicr_size = gicr_size_prop;
@@ -33,7 +32,7 @@
  	}
  
  	// Find the redistributor for this processor
-@@ -213,6 +225,7 @@
+@@ -213,6 +224,7 @@
  	}
  	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
  	__builtin_arm_isb(ISB_SY);
@@ -41,7 +40,7 @@
  #else
  	// Enable the forwarding of the vtimer interrupt
  	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
-@@ -228,3 +241,113 @@
+@@ -228,3 +240,111 @@
  {
  }
  #endif
@@ -72,12 +71,10 @@
 +}
 +static int giulia_gunyah_gic_uncontended(void *cookie)
 +{
-+	const ml_topology_info_t *topology = ml_get_topology_info();
 +	(void)cookie;
 +	return giulia_gunyah_gic_initialized && gicd_base &&
-+	    giulia_gunyah_gic_bytes >= GGIRQ_REG_BYTES && topology &&
-+	    topology->num_cpus == 1 && getCpuDatap() == &BootCpuData &&
-+	    !ml_at_interrupt_context() && !getCpuDatap()->interrupt_handler;
++	    giulia_gunyah_gic_bytes >= GGIRQ_REG_BYTES &&
++	    giulia_gpu_gunyah_irq_cpu_uncontended();
 +}
 +static struct ggirq_io giulia_gunyah_gic_io(void)
 +{
@@ -201,3 +198,20 @@
  
  	cpu_data_ptr->interrupt_nub = nub;
  	cpu_data_ptr->interrupt_source = source;
+@@ -2802,3 +2811,16 @@
+ 
+ 	return get_saved_state_pc(state);
+ }
++
++
++#if defined(ARM64_BOARD_CONFIG_SWEET) && HAS_GIC_V3
++/* CPU-private state stays in osfmk, where cpu_data_internal.h is available.
++ * The caller holds local interrupts disabled throughout the reservation check. */
++int giulia_gpu_gunyah_irq_cpu_uncontended(void)
++{
++	const ml_topology_info_t *topology = ml_get_topology_info();
++	return topology && topology->num_cpus == 1 &&
++	    getCpuDatap() == &BootCpuData && !ml_at_interrupt_context() &&
++	    !getCpuDatap()->interrupt_handler;
++}
++#endif

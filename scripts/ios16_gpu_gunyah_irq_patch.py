@@ -56,12 +56,10 @@ static uint64_t giulia_gunyah_gic_now(void *cookie)
 }
 static int giulia_gunyah_gic_uncontended(void *cookie)
 {
-	const ml_topology_info_t *topology = ml_get_topology_info();
 	(void)cookie;
 	return giulia_gunyah_gic_initialized && gicd_base &&
-	    giulia_gunyah_gic_bytes >= GGIRQ_REG_BYTES && topology &&
-	    topology->num_cpus == 1 && getCpuDatap() == &BootCpuData &&
-	    !ml_at_interrupt_context() && !getCpuDatap()->interrupt_handler;
+	    giulia_gunyah_gic_bytes >= GGIRQ_REG_BYTES &&
+	    giulia_gpu_gunyah_irq_cpu_uncontended();
 }
 static struct ggirq_io giulia_gunyah_gic_io(void)
 {
@@ -141,6 +139,21 @@ void giulia_gpu_gunyah_irq_controller_changed(void)
 #endif
 '''
 
+_CPU_GLUE = r'''
+
+#if defined(ARM64_BOARD_CONFIG_SWEET) && HAS_GIC_V3
+/* CPU-private state stays in osfmk, where cpu_data_internal.h is available.
+ * The caller holds local interrupts disabled throughout the reservation check. */
+int giulia_gpu_gunyah_irq_cpu_uncontended(void)
+{
+	const ml_topology_info_t *topology = ml_get_topology_info();
+	return topology && topology->num_cpus == 1 &&
+	    getCpuDatap() == &BootCpuData && !ml_at_interrupt_context() &&
+	    !getCpuDatap()->interrupt_handler;
+}
+#endif
+'''
+
 
 def gunyah_irq_sources(source_texts: dict[str, str]) -> dict[str, str]:
     """Return changed source text; refuse an unpatched/different platform."""
@@ -154,7 +167,6 @@ def gunyah_irq_sources(source_texts: dict[str, str]) -> dict[str, str]:
     text = changed[name]
     anchor = '#include <pexpert/arm64/board_config.h>\n'
     text = _replace(text, anchor, anchor + '''#if defined(ARM64_BOARD_CONFIG_SWEET) && HAS_GIC_V3
-#include <arm/cpu_data_internal.h>
 #include "../../iokit/Kernel/arm/giulia_gpu_gunyah_irq.h"
 static unsigned giulia_gunyah_gic_initialized;
 static uint64_t giulia_gunyah_gic_bytes;
@@ -202,6 +214,7 @@ static uint64_t giulia_gunyah_gic_bytes;
 	 * handler. Preserve the existing registration semantics for other IRQs. */
 	giulia_gpu_gunyah_irq_handler_registered();
 #endif''', name)
+    changed[name] += _CPU_GLUE
     return changed
 
 

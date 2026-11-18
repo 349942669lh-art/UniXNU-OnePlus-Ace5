@@ -18,7 +18,7 @@ from ios16_screen import ScreenWire, ScreenStore, ScreenViewer, ScreenControl
 DEVICE_COMMANDS = ('help', 'ping', 'status', 'replay', 'sample', 'features',
                    'info', 'uptime', 'memory', 'ps', 'bootargs', 'display', 'usb', 'ufs', 'shell',
                    'wifi.start','wifi.status','reboot.fastboot','reboot.status',
-                   'gpu.status','gpu.observe',
+                   'gpu.status','gpu.observe','gpu.stack',
                    'keys.status',
                    'slider.status','slider.stop',
                    'audio.status','audio.map','audio.preflight','audio.start','audio.stop','audio.test',
@@ -45,6 +45,7 @@ HELP = '''Device commands (new kernel needed except help/ping/status/replay/samp
   help / ping / status / replay / sample (GUI sampler)
   wifi.status / wifi.start   inspect/release an opted-in pre-DMA wait
   gpu.status              retained GPU preparation/last-observation state
+  gpu.stack               report preparation stages; no GPU execution
   gpu.observe             queue gated read-only power/SMMU observation
   gpu.hfi.pin             retain diagnostic DMA buffers until reboot (mode 3)
   gpu.hfi.status          inspect the 17 HWSCHED queue headers

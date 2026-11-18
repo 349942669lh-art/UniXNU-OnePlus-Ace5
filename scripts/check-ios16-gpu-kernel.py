@@ -14,6 +14,21 @@ MARKERS = (
     b'GIULIA GPU DEV: gunyah_owner_abi=1 current_boot_resources=1 guarded_hvc=1 fence_completion=0',
     b'cpu_cache=normal-copyback',
     b'GIULIA GPU: host RAM cache publication complete;',
+    b'GIULIA GPU: runtime_lease_abi=1 native_submit_abi=1 runtime_provider_bound=0 submit_provider_bound=0',
+    b'GIULIA GPU POWER OWNER: abi=1 registered=',
+    b'GIULIA GPU GPUCC: fixed branch transactions no-power-authority',
+    b'GIULIA GPU RCG: fixed configuration transactions no-power-authority',
+    b'GIULIA GPU PLL1: calibrated-standby transactions no-power-authority',
+    b'GIULIA GPU BOARD SOURCE: fixed clocks upstream-required retained-test-only',
+    b'GIULIA GPU GCC: fixed retained config/axi/memnoc/dvm',
+    b'GIULIA GPU CX: fixed retained GDSC transactions',
+    b'GIULIA GPU POWER OWNER: start code=',
+    b'GIULIA GPU PARENT: open code=',
+    b'GIULIA GPU ARC: snapshot-only no-hardware-authority',
+    b'GIULIA GPU ARC VOTES: transactional CPU-only aggregate unbound',
+    b'GIULIA GPU RSC: owned-active-tcs transport unbound',
+    b'GIULIA GPU RSC NATIVE: guarded mapping unbound',
+    b'GIULIA REG: disabled during GPU power-only test',
     b'GIULIA GPU HFI: table_iova=',
     b'GIULIA GPU HFI: query_ack=1',
     b'GIULIA GPU PLATFORM: abi=3',
@@ -34,10 +49,15 @@ MARKERS = (
 )
 SYMBOLS = tuple('_giulia_gpu_' + name for name in (
     'power_acquire', 'power_release', 'smmu_start', 'smmu_stop',
-    'gmu_load', 'gmu_start', 'log_event', 'terminal', 'qmp_available', 'cache_publish',
-    'ipcc_claim', 'ipcc_owns', 'ipcc_release',
+    'gmu_load', 'gmu_start', 'log_event', 'terminal', 'cache_publish',
     'fence_register', 'fence_ipcc_claim', 'fence_ipcc_owns',
-)) + ('_ggh_hvc_probe_compatibility','_ggh_hvc_valid','_ggh_hvc_send','_ggh_hvc_recv',
+)) + (
+      # QMP and IPCC arbitration belong to the shared platform broker. Require
+      # its real executable definitions, including in GPU-only builds.
+      '_giulia_platform_qmp_available',
+      '_gpr_global_legacy_ipcc_claim','_gpr_global_legacy_ipcc_owns',
+      '_gpr_global_legacy_ipcc_release',
+      '_ggh_hvc_probe_compatibility','_ggh_hvc_valid','_ggh_hvc_send','_ggh_hvc_recv',
       '_ggh_hvc_doorbell_valid','_ggh_hvc_doorbell_read_clean',
       '_ggrs_init','_ggrs_init_hvc','_ggrs_probe','_ggrs_notification',
       '_ggrs_invalidate','_ggrs_copy_snapshot','_ggrs_poll',
@@ -47,7 +67,30 @@ SYMBOLS = tuple('_giulia_gpu_' + name for name in (
       '_giulia_gpu_gunyah_irq_invalidate','_giulia_gpu_gunyah_irq_dispatch',
       '_giulia_gpu_gunyah_irq_handler_registered','_giulia_gpu_gunyah_irq_controller_changed',
       '_ggown_init','_ggown_bootstrap','_ggown_probe','_ggown_poll',
-      '_ggown_copy_snapshot','_ggown_get_status','_ggown_get_channel','_ggown_invalidate')
+      '_ggown_copy_snapshot','_ggown_get_status','_ggown_get_channel','_ggown_invalidate',
+      '_giulia_gpu_runtime_acquire','_giulia_gpu_runtime_live',
+      '_giulia_gpu_runtime_dma','_giulia_gpu_runtime_drain',
+      '_giulia_gpu_runtime_release','_giulia_gpu_runtime_quarantine',
+      '_giulia_gpu_runtime_reserve','_giulia_gpu_runtime_cancel',
+      '_giulia_gpu_submit_encode','_giulia_gpu_submit_init','_giulia_gpu_submit',
+      '_giulia_gpu_submit_poll','_giulia_gpu_submit_invalidate') + tuple(
+      '_giulia_gpu_power_owner_' + name for name in (
+          'initialize','register','acquire','release','invalidate','unregister','status')) + tuple(
+      '_ggcp_' + name for name in ('init','acquire','release','close','quarantine')) + tuple(
+      '_giulia_gpu_parents_' + name for name in (
+          'initialize','open','acquire','release','close','invalidate','status')) + tuple(
+      '_ggarc_' + name for name in ('identity','resolve','select')) + tuple(
+      '_ggav_' + name for name in ('identity','init','add','remove','base','finish','quarantine','status')) + tuple(
+      '_ggrsc_' + name for name in ('identity','open','submit','poll','close','invalidate')) + tuple(
+      '_giulia_gpu_rsc_native_' + name for name in (
+          'identity','initialize','open','submit','poll','close','invalidate','status')) + tuple(
+      '_ggcb_' + name for name in ('identity','describe','open','apply','invalidate')) + tuple(
+      '_ggrc_' + name for name in ('identity','describe','open','apply','invalidate')) + tuple(
+      '_ggp1_' + name for name in ('identity','describe','open','start','invalidate')) + (
+      '_ggbs_identity','_ggbs_init','_ggbs_export',
+      '_giulia_gpu_board_source_register','_ggbs_invalidate','_ggbs_status') + tuple(
+      '_gggc_' + name for name in ('identity','describe','open','enable','invalidate')) + tuple(
+      '_ggcx_' + name for name in ('identity','describe','open','enable','invalidate'))
 
 
 def linked_functions(kernel):

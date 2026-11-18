@@ -19,6 +19,7 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -pthread \
 "$tmp/terminal"
 python3 tests/ios16_gpu_terminal_profile.py
 python3 tests/ios16_gpu_service.py
+python3 tests/ios16_gpu_service_layout.py
 python3 tests/ios16_gpu_platform_runtime.py
 python3 tests/ios16_gpu_mapping_runtime.py
 python3 tests/ios16_gpu_dev_runtime.py
@@ -70,8 +71,10 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-rec
     -DGG_GUNYAH_HVC_STANDALONE -DGG_GUNYAH_HVC_TEST -DGG_GUNYAH_HVC_NO_PROBE_HOOK \
     tests/ios16_gpu_gunyah_hvc.c ios16/gpu/giulia_gpu_gunyah_hvc.c -o "$tmp/gunyah-hvc-no-probe"
 "$tmp/gunyah-hvc-no-probe"
+python3 tests/ios16_gpu_probe_optional.py
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
     -DGG_GUNYAH_SESSION_STANDALONE -DGG_GUNYAH_HVC_STANDALONE -DGG_GUNYAH_HVC_TEST \
+    -DGG_GUNYAH_HVC_NO_PROBE_HOOK \
     tests/ios16_gpu_gunyah_session.c ios16/gpu/giulia_gpu_gunyah_session.c \
     ios16/gpu/giulia_gpu_gunyah_hvc.c -o "$tmp/gunyah-session"
 "$tmp/gunyah-session"
@@ -165,6 +168,29 @@ else
 fi
 python3 tests/ios16_gpu_log.py "$tmp/control.log"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -DGG_HOST_TEST tests/ios16_gpu_submission.c ios16/gpu/giulia_gpu_runtime.c \
+    ios16/gpu/giulia_gpu_submit.c -o "$tmp/submission"
+"$tmp/submission"
+python3 tests/ios16_gpu_submit_source.py
+python3 tests/ios16_gpu_ownership_audit.py
+python3 tests/ios16_gpu_submission_linkage.py
+python3 tests/ios16_gpu_power_owner.py
+python3 tests/ios16_gpu_parents.py
+python3 tests/ios16_gpu_gpucc.py
+python3 tests/ios16_gpu_rcg.py
+python3 tests/ios16_gpu_pll1.py
+python3 tests/ios16_gpu_gcc.py
+python3 tests/ios16_gpu_cx.py
+python3 tests/ios16_gpu_board_source.py
+python3 tests/ios16_gpu_gmu_source.py
+python3 tests/ios16_gpu_arc.py
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -DGG_HOST_TEST tests/ios16_gpu_arc_votes.c ios16/gpu/giulia_gpu_arc_votes.c \
+    ios16/gpu/giulia_gpu_arc.c -o "$tmp/arc-votes"
+"$tmp/arc-votes"
+python3 tests/ios16_gpu_rsc.py
+python3 tests/ios16_gpu_rsc_native.py
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
     -DGG_HOST_TEST tests/ios16_gpu_stack.c ios16/gpu/giulia_gpu_stack.c -o "$tmp/stack"
 "$tmp/stack"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
@@ -184,6 +210,7 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-rec
     tests/ios16_gpu_share_runtime.c ios16/gpu/giulia_gpu_gunyah_share.c -o "$tmp/share-runtime"
 "$tmp/share-runtime"
 python3 tests/ios16_gpu_stack_contract.py
+python3 tests/ios16_gpu_stack_linkage.py
 python3 tests/ios16_gpu_hfi_wiring.py
 c++ -x c++ -std=c++17 -Wall -Wextra -Werror -fsyntax-only \
     -include ios16/gpu/giulia_gpu_pack.h -include ios16/gpu/giulia_gpu_memory.h \

@@ -46,7 +46,7 @@ static inline void gg_record(struct gg_diagnostics *d,gg_trace_fn sink,void *coo
 static inline const char *gg_phase_name(unsigned subsystem,unsigned phase)
 {
     static const char *const power[]={"cx-domain","gmu-rate","hub-rate","gmu-clock","cxo-clock",
-        "axi-clock","memnoc-clock","ahb-clock","hub-clock","smmu-clock","ready-poll","resolve","quiescence"};
+        "axi-clock","memnoc-clock","ahb-clock","hub-clock","smmu-clock","dvm-clock","ready-poll","resolve","quiescence"};
     static const char *const smmu[]={"none","lease-preflight","program-context","attach-stream","active","detach"};
     static const char *const gmu[]={"none","load-tcm","configure-boot","release-reset","firmware-ready","prepare-hfi","hfi-ready","abort-reset"};
     if(subsystem==GGD_POWER && phase<sizeof(power)/sizeof(power[0])) return power[phase];

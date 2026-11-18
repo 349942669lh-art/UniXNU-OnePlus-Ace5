@@ -63,7 +63,7 @@ int ggfn_get(struct ggfn_state *, struct ggfc_mapping *);
 int ggfn_invalidate(struct ggfn_state *);
 int ggfn_status(const struct ggfn_state *, struct ggfn_status *);
 
-/* Platform backend, implemented in this unit for the target kernel only. The
+/* Platform backend, implemented in giulia_gpu_fence_iokit.cpp for the target kernel. The
  * host build never defines it; tests inject their own map/audit callbacks. */
 int giulia_gpu_fence_native_map(void *, const struct ggfc_envelope *, struct ggfc_mapping *);
 int giulia_gpu_fence_native_audit(void *, const struct ggfc_envelope *,
