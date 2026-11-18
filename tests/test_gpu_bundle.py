@@ -99,7 +99,10 @@ from pathlib import Path
 args=sys.argv[1:]
 out=Path(args[args.index('--out')+1]);out.mkdir()
 metadata=json.loads(Path(args[args.index('--kernel')+1]).with_suffix('.json').read_text())
-report={'wifi_runtime':{'firmware':metadata['wifi_firmware']}}
+report={}
+if metadata.get('wifi_firmware'):report['wifi_runtime']={'firmware':metadata['wifi_firmware']}
+if '--wifi-pcie' in args:report['wifi_pcie_handoff']=True
+if '--gpu-hostonly' in args:report['gpu_hostonly']=True
 if metadata.get('gpu_firmware'):report['gpu_runtime']={'firmware':metadata['gpu_firmware'],'acceleration':False}
 if '--gpu-mode' in args:report['gpu_mode']=int(args[args.index('--gpu-mode')+1])
 if report.get('gpu_mode'):
@@ -149,12 +152,14 @@ if report.get('gpu_mode')==3:
         self.kernel.with_suffix('.json').write_text(json.dumps({
             'output_sha256': self.original_digest, 'boot_args_bytes': 736, 'preserved': 'handoff-fixture'}))
 
-    def build(self, gpu_pack=True, mode=None, wifi_pack=True):
+    def build(self, gpu_pack=True, mode=None, wifi_pack=True, hostonly=False):
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIULIA_')}
         if gpu_pack:
             env['GIULIA_GPU_PACK'] = str(self.packs['gpu'])
         if mode is not None:
             env['GIULIA_GPU_MODE'] = str(mode)
+        if hostonly:
+            env['GIULIA_GPU_HOSTONLY'] = '1'
         command = ['bash', str(self.repo / 'scripts/build-ios16-wifi-bringup.sh'),
                    str(self.uefi), str(self.interpreter), str(self.kernel), *self.inputs, str(self.output)]
         if wifi_pack:
@@ -175,8 +180,7 @@ if report.get('gpu_mode')==3:
         self.rejected('requires explicit GIULIA_GPU_PACK', gpu_pack=False, mode=1)
         self.rejected('must be 1, 2 or 3', mode=4)
 
-    def test_gpu_requires_wifi_runtime_and_compiled_service(self):
-        self.rejected('LOCAL_FIRMWARE_PACK', wifi_pack=False)
+    def test_gpu_requires_compiled_service(self):
         self.write_kernel(gpu=False)
         self.rejected('kernel compiled with --gpu')
 
@@ -229,6 +233,34 @@ if report.get('gpu_mode')==3:
                                 item['sha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
                                 for item in report['source_files']))
         self.assertTrue((self.output / 'gpu-offline-checks.json').is_file())
+
+    def test_gpu_only_host_preparation_has_no_wifi_handoff(self):
+        result = self.build(wifi_pack=False, hostonly=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads((self.output / 'source-manifest.json').read_text())
+        self.assertTrue(report['gpu_hostonly'])
+        self.assertIsNone(report['runtime'])
+        self.assertIsNone(report['firmware_digests']['wifi'])
+        self.assertEqual(report['firmware_digests']['gpu'], self.digests['gpu'].hex())
+        header = self.uefi / 'Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe/PayloadIdentity.h'
+        self.assertIn('#define GIULIA_WIFI_PCIE 0', header.read_text())
+        self.assertNotIn('#define GIULIA_GPU_POWER 1', header.read_text())
+
+    def test_hostonly_refuses_other_modes_before_build(self):
+        self.rejected('requires GPU mode 1', mode=2, hostonly=True)
+        self.rejected('requires GPU mode 1', mode=3, hostonly=True)
+
+    def test_payload_entrypoint_refuses_invalid_hostonly_mode(self):
+        for mode in (None, '2', '3'):
+            command = [sys.executable, str(ROOT / 'scripts/make-ios16-payload.py'),
+                       '--kernel', str(self.kernel), '--adt', self.inputs[0],
+                       '--out', str(self.output), '--gpu-hostonly']
+            if mode is not None:
+                command += ['--gpu-mode', mode]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('--gpu-hostonly requires --gpu-mode 1', result.stderr)
+            self.assertFalse(self.output.exists())
 
     def test_stale_kernel_without_cx_definition_fails_before_build(self):
         binary = self.kernel.read_bytes().replace(b'_ggcx_enable\0', b'_ggcx_unlink\0')

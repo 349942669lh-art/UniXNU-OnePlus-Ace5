@@ -42,9 +42,12 @@ def main():
     p.add_argument('--touch-gpio',action='store_true',help='Allow GPIO SPI on the observed GPI-only controller')
     p.add_argument('--wifi-pcie',action='store_true',help='Opt-in WCN7850 power/PCIe enumeration in the matching UEFI; a runtime kernel also requires locally embedded firmware')
     p.add_argument('--gpu-mode',type=int,choices=(1,2,3),help='1: host preparation; 2: gated observation; 3: explicit UEFI CX/clock preparation with a fixed ADT report')
+    p.add_argument('--gpu-hostonly',action='store_true',help='Restrict GPU mode 1 to host-memory preparation and CPU-only status/stack commands')
     p.add_argument('--audio-prepare',action='store_true',help='Validate local audio pack and start coordinator; does not establish native platform ownership')
     p.add_argument('--modem-mode',choices=('diagnostic','managed'),help='Enable the unified modem service; managed requires native provider and matching cellular root policy')
     a=p.parse_args()
+    if a.gpu_hostonly and a.gpu_mode != 1:
+        p.error('--gpu-hostonly requires --gpu-mode 1')
     if a.trace_launch_services:a.trace_services=True
     if a.trace_all:a.trace_services=True
     if a.default_root and not a.root_report: p.error('Default root requires a root report')
@@ -151,6 +154,7 @@ def main():
         if a.enable_touch:root_args+=' giulia_touch=1'
         if a.touch_gpio:root_args+=' giulia_touch_gpio=1'
         if a.gpu_mode:root_args+=' giulia_gpu='+str(a.gpu_mode)
+        if a.gpu_hostonly:root_args+=' giulia_gpu_hostonly=1'
         if a.audio_prepare:root_args+=' giulia_audio=1'
         if a.enable_slider:root_args+=' giulia_slider=1'
         if a.modem_mode:root_args+=' giulia_modem='+str(1 if a.modem_mode=='diagnostic' else 2)
@@ -209,6 +213,7 @@ def main():
     if a.modem_mode:result['modem_mode']=a.modem_mode
     if a.audio_prepare:result['audio_prepare']=True
     if a.gpu_mode:result['gpu_mode']=a.gpu_mode
+    if a.gpu_hostonly:result['gpu_hostonly']=True
     if gpu_power:result['gpu_power_handoff']=gpu_power
     if gpu_gunyah:result['gpu_gunyah_handoff']=gpu_gunyah
     if a.wifi_pcie:

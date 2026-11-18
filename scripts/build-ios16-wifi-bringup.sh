@@ -24,6 +24,12 @@ runtime_pack=""
 if [ "$#" -eq 9 ]; then runtime_pack="$(realpath "$9")"; fi
 gpu_pack="${GIULIA_GPU_PACK:-}"
 gpu_mode="${GIULIA_GPU_MODE:-1}"
+gpu_hostonly="${GIULIA_GPU_HOSTONLY:-0}"
+case "$gpu_hostonly" in 0|1) ;; *) echo 'GIULIA_GPU_HOSTONLY must be 0 or 1' >&2; exit 2;; esac
+if [ "$gpu_hostonly" = 1 ] && { [ -z "$gpu_pack" ] || [ "$gpu_mode" != 1 ]; }; then
+  echo 'GIULIA_GPU_HOSTONLY requires GPU mode 1 and an explicit pack' >&2
+  exit 2
+fi
 case "$gpu_mode" in 1|2|3) ;; *) echo 'GIULIA_GPU_MODE must be 1, 2 or 3' >&2; exit 2;; esac
 if [ -n "$gpu_pack" ]; then gpu_pack="$(realpath "$gpu_pack")"; fi
 if [ -n "${GIULIA_GPU_MODE:-}" ] && [ -z "$gpu_pack" ]; then
@@ -43,8 +49,6 @@ compiled=b'GIULIA GPU: host preparation complete;' in kernel
 if (compiled or metadata.get('gpu_runtime_included')) and not gpu_pack:
     raise SystemExit('Compiled GPU driver requires GIULIA_GPU_PACK; GIULIA_GPU_MODE defaults to 1')
 if gpu_pack:
-    if not wifi_pack:
-        raise SystemExit('Unified GPU packaging requires the ninth argument LOCAL_FIRMWARE_PACK for Wi-Fi runtime')
     if not compiled:
         raise SystemExit('GIULIA_GPU_PACK requires a kernel compiled with --gpu')
     if b'GIULIA GPU: boot Gunyah resources' not in kernel:
@@ -58,6 +62,8 @@ if gpu_pack:
     # Validate the exact insertion order, both pinned packs and header capacity
     # before tests, loader edits or the expensive UEFI build.
     for name,path in (('wifi',wifi_pack),('gpu',gpu_pack)):
+        if not path:
+            continue
         pin=(root/f'ios16/{name}/giulia_{name}_firmware_pin.h').read_text()
         digest=bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})\b',pin))
         append=runpy.run_path(str(root/f'scripts/embed-{name}-firmware.py'))['append_pack']
@@ -94,7 +100,10 @@ fi
 runtime_checks=()
 terminal_args=()
 gpu_args=()
+wifi_args=()
+if [ -n "$runtime_pack" ]; then wifi_args=(--wifi-pcie); fi
 if [ -n "$gpu_pack" ]; then gpu_args=(--gpu-mode "$gpu_mode"); fi
+if [ "$gpu_hostonly" = 1 ]; then gpu_args+=(--gpu-hostonly); fi
 if [ "${GIULIA_DEBUG_TERMINAL:-0}" = 1 ]; then terminal_args+=(--debug-terminal); fi
 if [ "${GIULIA_DEBUG_MMIO:-0}" = 1 ]; then terminal_args+=(--debug-mmio); fi
 if [ "${GIULIA_WIFI_TERMINAL_WAIT:-0}" = 1 ]; then terminal_args+=(--wifi-terminal-wait); fi
@@ -122,6 +131,8 @@ if [ -n "$runtime_pack" ]; then
   if [ -n "$gpu_pack" ]; then
     python3 scripts/embed-gpu-firmware.py --kernel "$wifi_kernel" --pack "$gpu_pack" --out "$output_dir/kernel.macho"
   fi
+elif [ -n "$gpu_pack" ]; then
+  python3 scripts/embed-gpu-firmware.py --kernel "$kernel_input" --pack "$gpu_pack" --out "$output_dir/kernel.macho"
 else
   cp "$kernel_input" "$output_dir/kernel.macho"
   cp "${kernel_input%.*}.json" "$output_dir/kernel.json"
@@ -150,7 +161,7 @@ fi
 python3 scripts/make-ios16-payload.py --kernel "$output_dir/kernel.macho" \
   --adt "$output_dir/giulia-ios16.adt" --trust-catalog "$trust_input" \
   --out "$output_dir/payload" --root-report "$root_report" \
-  --default-root --trace-all --wifi-pcie --enable-touch --touch-gpio "${terminal_args[@]}" "${gpu_args[@]}"
+  --default-root --trace-all "${wifi_args[@]}" --enable-touch --touch-gpio "${terminal_args[@]}" "${gpu_args[@]}"
 python3 scripts/verify-payload.py "$output_dir/payload"
 python3 - "$output_dir" <<'PY'
 from pathlib import Path
@@ -188,7 +199,8 @@ r=json.loads((out/'payload/identity.json').read_text())
 (driver/'PayloadIdentity.h').write_text(
     f"#define GIULIA_PAYLOAD_BYTES {r['payload_bytes']}U\n"
     f"#define GIULIA_PAYLOAD_CRC32 0x{r['payload_crc32']}U\n"
-    '#define GIULIA_TOUCH_CLOCK 1\n#define GIULIA_TOUCH_POWER 1\n#define GIULIA_WIFI_PCIE 1\n'
+    '#define GIULIA_TOUCH_CLOCK 1\n#define GIULIA_TOUCH_POWER 1\n'
+    + ('#define GIULIA_WIFI_PCIE 1\n' if r.get('wifi_pcie_handoff') else '#define GIULIA_WIFI_PCIE 0\n')
     + ('#define GIULIA_WIFI_XNU_LINK 1\n' if os.environ.get('GIULIA_WIFI_XNU_LINK')=='1' else '')
     + ('#define GIULIA_GPU_POWER 1\n' if r.get('gpu_power_handoff') else ''))
 PY
@@ -244,6 +256,7 @@ report={'repository_head':subprocess.check_output(['git','rev-parse','HEAD'],tex
         'hardware_verified':False,'scan_implemented':bool(runtime),'scan_hardware_verified':False,
         'runtime':runtime,'gpu_runtime':gpu_runtime,'gpu_mode':payload.get('gpu_mode'),
         'gpu_power_handoff':payload.get('gpu_power_handoff'),
+        'gpu_hostonly':payload.get('gpu_hostonly',False),
         'gpu_gunyah_handoff':payload.get('gpu_gunyah_handoff'),
         'gpu_hardware_verified':False,'acceleration':False,
         'firmware_digests':{'wifi':runtime['firmware']['sha256'] if runtime else None,
