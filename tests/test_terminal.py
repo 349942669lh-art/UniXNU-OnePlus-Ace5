@@ -250,6 +250,19 @@ class Terminal(unittest.TestCase):
                 self.assertTrue(terminal.reboot_failed(capture))
             finally:capture.close()
 
+    def test_readonly_probe_reboot_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture=terminal.Capture(Path(directory))
+            try:
+                capture.feed(b'GIULIA REBOOT: prepare result=0\n')
+                self.assertFalse(terminal.reboot_acknowledged(capture))
+                capture.feed(b'GIULIA REBOOT: resetting target=fastboot disks=read-only-probe-pending\n')
+                self.assertFalse(terminal.reboot_acknowledged(capture))
+                capture.feed(b'GIULIA REBOOT: resetting target=fastboot disks=read-only-probe\n')
+                self.assertTrue(terminal.reboot_acknowledged(capture))
+                self.assertFalse(terminal.reboot_failed(capture))
+            finally:capture.close()
+
     def test_fastboot_wait_matches_requested_device(self):
         times=iter([0,.1,.2,.6,.7,.8])
         runner=Mock(side_effect=[SimpleNamespace(returncode=0,stdout='other\tfastboot\n'),

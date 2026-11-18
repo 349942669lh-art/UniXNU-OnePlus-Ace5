@@ -20,6 +20,14 @@ struct grb_state {
     uint32_t version,count,apid,mapping,status;
     unsigned before,expected,observed,changed,armed,error;
 };
+/* A completed root-selection read probe keeps BSD startup parked. Its explicit
+ * host-only GPU profile has no mounted filesystem writer or GPU device work. */
+static inline int grb_readonly_probe_allowed(unsigned completed,int probe,int writable,
+    int gpu_mode,int host_only,int mmio,int power_test)
+{
+    return completed==1 && probe==1 && writable==0 && gpu_mode==1 &&
+        host_only==1 && mmio==0 && power_test==0;
+}
 static inline int grb_owned(const struct grb_io *b,const struct grb_state *s)
 {
     return b->read(b->context,GRB_CORE,0x2000+4*s->apid)==s->mapping &&

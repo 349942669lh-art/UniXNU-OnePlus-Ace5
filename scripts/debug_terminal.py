@@ -435,8 +435,10 @@ class Commands:
 
 
 def reboot_acknowledged(capture):
-    return any('GIULIA REBOOT: resetting target=fastboot disks=shutdown-complete' in line
-               for line in [*capture.lines, capture.pending])
+    return any(line.rstrip().endswith((
+        'GIULIA REBOOT: resetting target=fastboot disks=shutdown-complete',
+        'GIULIA REBOOT: resetting target=fastboot disks=read-only-probe'))
+        for line in [*capture.lines, capture.pending])
 
 
 def reboot_failed(capture):
@@ -536,7 +538,7 @@ def run(args, serial_module, ports):
                     if not commands.reboot_sent or not reboot_acknowledged(capture) or reboot_failed(capture):
                         raise
                     reboot_disconnected = True
-                    show('USB disconnected after the kernel completed shutdown for Fastboot.')
+                    show('USB disconnected after the kernel acknowledged the Fastboot reset.')
                     break
                 if data:
                     capture.feed(data)

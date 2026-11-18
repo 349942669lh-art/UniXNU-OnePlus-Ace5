@@ -6,7 +6,7 @@ static struct {
     vm_offset_t core,owner,observer,writer;
     struct grb_state state;
     thread_t reboot_thread;
-    unsigned pending,reset_armed;
+    unsigned pending,reset_armed,read_probe_complete;
 } gr_runtime;
 static uint32_t gr_read(void *ctx,unsigned space,unsigned offset)
 {
@@ -44,18 +44,41 @@ static void gr_sleep(unsigned ms)
     assert_wait_deadline((event_t)&gr_runtime,THREAD_UNINT,deadline);
     thread_block(THREAD_CONTINUE_NULL);
 }
-int giulia_reboot_finish(void);
-int giulia_reboot_finish(void)
+/* Published by the root-selection hook after its UFS read probe returns. */
+void giulia_reboot_read_probe_complete(void);
+void giulia_reboot_read_probe_complete(void)
 {
-    if(!__atomic_load_n(&gr_runtime.reset_armed,__ATOMIC_ACQUIRE) ||
-       current_thread()!=gr_runtime.reboot_thread)return 0;
-    printf("GIULIA REBOOT: resetting target=fastboot disks=shutdown-complete\n");
+    __atomic_store_n(&gr_runtime.read_probe_complete,1u,__ATOMIC_RELEASE);
+}
+static int gr_readonly_probe(void)
+{
+    int probe=0,writable=0,mode=0,host_only=0,mmio=0,power_test=0;
+    PE_parse_boot_argn("giulia_ufs_probe",&probe,sizeof(probe));
+    PE_parse_boot_argn("vermeer_ufs_rw",&writable,sizeof(writable));
+    PE_parse_boot_argn("giulia_gpu",&mode,sizeof(mode));
+    PE_parse_boot_argn("giulia_gpu_hostonly",&host_only,sizeof(host_only));
+    PE_parse_boot_argn("giulia_mmio",&mmio,sizeof(mmio));
+    PE_parse_boot_argn("giulia_gpu_power_test",&power_test,sizeof(power_test));
+    return grb_readonly_probe_allowed(
+        __atomic_load_n(&gr_runtime.read_probe_complete,__ATOMIC_ACQUIRE),
+        probe,writable,mode,host_only,mmio,power_test);
+}
+static int gr_reset(const char *disks)
+{
+    printf("GIULIA REBOOT: resetting target=fastboot disks=%s\n",disks);
     gr_sleep(500); /* CDC stays on its own worker while the acknowledgement drains. */
     __asm__ volatile("dsb sy\nisb" ::: "memory");
     int64_t result=gr_smc(0x84000009u,0); /* PSCI SYSTEM_RESET, same as stock cold restart */
     printf("GIULIA REBOOT: PSCI SYSTEM_RESET returned=%lld\n",(long long)result);
     __atomic_store_n(&gr_runtime.reset_armed,0u,__ATOMIC_RELEASE);
     return EIO; /* Never silently fall through to a different reboot target. */
+}
+int giulia_reboot_finish(void);
+int giulia_reboot_finish(void)
+{
+    if(!__atomic_load_n(&gr_runtime.reset_armed,__ATOMIC_ACQUIRE) ||
+       current_thread()!=gr_runtime.reboot_thread)return 0;
+    return gr_reset("shutdown-complete");
 }
 static void gr_worker(void *unused,wait_result_t wait)
 {
@@ -78,7 +101,10 @@ static void gr_worker(void *unused,wait_result_t wait)
     if(error)goto out;
     __atomic_store_n(&gr_runtime.reset_armed,1u,__ATOMIC_RELEASE);
     gr_sleep(500);
-    error=reboot_kernel(RB_AUTOBOOT,NULL);
+    /* The completed read-only diagnostic parks BSD root selection. Keep its
+     * scheduler and CDC alive through acknowledgement and the global reset. */
+    if(gr_readonly_probe())error=gr_reset("read-only-probe");
+    else error=reboot_kernel(RB_AUTOBOOT,NULL);
     __atomic_store_n(&gr_runtime.reset_armed,0u,__ATOMIC_RELEASE);
     printf("GIULIA REBOOT: shutdown returned=%d reason_restore=%d\n",error,grb_restore(&gr_io,&gr_runtime.state));
 out:
@@ -90,9 +116,10 @@ static int gr_command(const char *cmd)
     if(strcmp(cmd,"reboot.fastboot") && strcmp(cmd,"reboot.status"))return 0;
     if(!gs_enabled()) {printf("GIULIA REBOOT: requires giulia_debug=1\n");return 1;}
     if(!strcmp(cmd,"reboot.status")) {
-        printf("GIULIA REBOOT: pending=%u armed=%u\n",
+        printf("GIULIA REBOOT: pending=%u armed=%u read_probe_complete=%u\n",
             __atomic_load_n(&gr_runtime.pending,__ATOMIC_ACQUIRE),
-            __atomic_load_n(&gr_runtime.reset_armed,__ATOMIC_ACQUIRE));return 1;
+            __atomic_load_n(&gr_runtime.reset_armed,__ATOMIC_ACQUIRE),
+            __atomic_load_n(&gr_runtime.read_probe_complete,__ATOMIC_ACQUIRE));return 1;
     }
     unsigned expected=0;
     if(!__atomic_compare_exchange_n(&gr_runtime.pending,&expected,1u,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) {

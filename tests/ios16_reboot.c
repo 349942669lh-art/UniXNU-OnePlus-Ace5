@@ -12,7 +12,8 @@ static uint32_t read32(void *ctx,unsigned space,unsigned offset)
 {
     (void)ctx;
     if(space==GRB_CORE) {
-        if(!offset)return h.version;if(offset==4)return h.features;
+        if(!offset)return h.version;
+        if(offset==4)return h.features;
         assert(offset>=0x2000 && offset<0x3000 && !(offset&3));return h.mapping[(offset-0x2000)/4];
     }
     if(space==GRB_OWNER) {assert(offset<0x1000 && !(offset&3));return h.owner[offset/4];}
@@ -51,6 +52,15 @@ static void init(struct grb_state *s)
 int main(void)
 {
     struct grb_state s;unsigned cases=0;
+    for(unsigned mask=0;mask<128;mask++) {
+        int allowed=grb_readonly_probe_allowed(mask&1,(mask>>1)&1,(mask>>2)&1,
+            (mask>>3)&1,(mask>>4)&1,(mask>>5)&1,(mask>>6)&1);
+        assert(allowed==(mask==27));cases++;
+    }
+    assert(!grb_readonly_probe_allowed(1,1,0,2,1,0,0));cases++;
+    assert(!grb_readonly_probe_allowed(1,1,0,3,1,0,0));cases++;
+    assert(!grb_readonly_probe_allowed(2,1,0,1,1,0,0));cases++;
+    assert(!grb_readonly_probe_allowed(1,1,0,1,-1,0,0));cases++;
     const unsigned bytes[]={0,1,2,3,0x7e,0x7f,0xfe,0xff};
     for(unsigned i=0;i<sizeof(bytes)/sizeof(bytes[0]);i++) {
         init(&s);h.byte=bytes[i];assert(grb_prepare(&io,&s)==GRB_OK && s.armed);

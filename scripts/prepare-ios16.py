@@ -134,13 +134,15 @@ def main():
     edit(block,'g.first != 2570304 || g.blocks != 59272123','g.first != 3920350 || g.blocks != 119881245')
     # Start the scheduler-based CDC worker at root selection, BEFORE UFS I/O.
     hook=v/'0021-vermeer-ios-root-hook.patch'
-    edit(hook,'+766,22','+766,33')
+    edit(hook,'+766,22','+766,35')
     edit(hook,'+\t\tint error = vermeer_ufs_ios_rootdev(root);',
          '+\t\textern void vermeer_usb_debug_start(void);\n+\t\tvermeer_usb_debug_start();\n'
          '+\t\tint giulia_probe = 0;\n+\t\tPE_parse_boot_argn("giulia_ufs_probe", &giulia_probe, sizeof(giulia_probe));\n'
          '+\t\tif (giulia_probe == 1) {\n+\t\t\textern int vermeer_ufs_probe(void);\n'
          '+\t\t\tint probe_error = vermeer_ufs_probe();\n'
          '+\t\t\tIOLog("GIULIA: UFS read probe result %d; USB console remains active\\n", probe_error);\n'
+         '+\t\t\textern void giulia_reboot_read_probe_complete(void);\n'
+         '+\t\t\tgiulia_reboot_read_probe_complete();\n'
          '+\t\t\t/* Keep the scheduler alive for CDC enumeration after a failed read. */\n'
          '+\t\t\tfor (;;) IOSleep(1000);\n+\t\t}\n'
          '+\t\tint error = vermeer_ufs_ios_rootdev(root);')
