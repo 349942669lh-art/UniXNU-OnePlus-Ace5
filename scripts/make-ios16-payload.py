@@ -59,6 +59,8 @@ def main():
     if report['output_sha256']!=sha(a.kernel) or report['boot_args_bytes']!=736:
         raise ValueError('Kernel handoff verification missing')
     platform_match=check_platform(a.adt.read_bytes(),a.kernel.read_bytes())
+    if a.gpu_hostonly and b'giulia_gpu_hostonly\0' not in a.kernel.read_bytes():
+        raise ValueError('Kernel lacks the GPU host-only boot policy')
     if a.enable_slider and (not a.root_report or not platform_match.get('gui') or
                             b'GIULIA SLIDER: handoff-missing gh=' not in a.kernel.read_bytes()):
         raise ValueError('Slider requires a GUI root and the compiled guarded AK09970 worker')
@@ -72,7 +74,8 @@ def main():
         raise ValueError('Audio preparation requires a GUI root and matching embedded audio firmware')
     gpu_power=check_gpu_power_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
     gpu_gunyah=check_gpu_gunyah_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
-    if a.gpu_mode and (not gpu_runtime or not a.root_report or not platform_match.get('gui')):
+    if a.gpu_mode and (not gpu_runtime or not platform_match.get('gui') or
+                       (not a.root_report and not a.gpu_hostonly)):
         raise ValueError('GPU mode requires a GUI root entry and matching embedded GPU firmware')
     wifi=check_wifi_platform(read_nodes(a.adt.read_bytes()))
     wifi_runtime=check_runtime(a.kernel.read_bytes(),report)
@@ -108,6 +111,7 @@ def main():
         if b'GIULIA WIFI: awaiting wifi.start before DMA setup' not in a.kernel.read_bytes():
             raise ValueError('Kernel lacks the Wi-Fi terminal start gate')
         args+=' giulia_wifi_wait=1'
+    if a.gpu_hostonly:args+=' giulia_gpu=1 giulia_gpu_hostonly=1'
     probe=args+' giulia_ufs_probe=1'
     config=('version = 1\n[boot]\ntimeout = 3\ndefault = "xnu"\n[kits]\nautoload = false\n'
             '[[entry]]\nid = "xnu"\ntitle = "Ace 5 iOS16 UFS + USB"\ntype = "xnu"\n'
@@ -153,8 +157,7 @@ def main():
             if a.trace_all:root_args+=' giulia_bootlog=1'
         if a.enable_touch:root_args+=' giulia_touch=1'
         if a.touch_gpio:root_args+=' giulia_touch_gpio=1'
-        if a.gpu_mode:root_args+=' giulia_gpu='+str(a.gpu_mode)
-        if a.gpu_hostonly:root_args+=' giulia_gpu_hostonly=1'
+        if a.gpu_mode and not a.gpu_hostonly:root_args+=' giulia_gpu='+str(a.gpu_mode)
         if a.audio_prepare:root_args+=' giulia_audio=1'
         if a.enable_slider:root_args+=' giulia_slider=1'
         if a.modem_mode:root_args+=' giulia_modem='+str(1 if a.modem_mode=='diagnostic' else 2)

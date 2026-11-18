@@ -71,8 +71,12 @@ with tempfile.TemporaryDirectory() as directory:
     if report.get('audio_prepare') and (not audio_runtime or not report.get('root_finder_id') or
                                       not report.get('platform_match',{}).get('gui')):
         raise SystemExit('Audio preparation requires the verified GUI root and audio firmware')
+    gpu_hostonly=report.get('gpu_hostonly',False)
+    if type(gpu_hostonly) is not bool or (gpu_hostonly and report.get('gpu_mode')!=1):
+        raise SystemExit('Host-only GPU preparation requires mode 1')
     if report.get('gpu_mode') and (report['gpu_mode'] not in (1,2,3) or not gpu_runtime or
-                                  not report.get('root_finder_id') or not report.get('platform_match',{}).get('gui')):
+                                  not report.get('platform_match',{}).get('gui') or
+                                  (not report.get('root_finder_id') and not gpu_hostonly)):
         raise SystemExit('GPU mode requires the verified GUI root and GPU firmware')
     gpu_power=check_gpu_power_request((temporary/'kernel.macho.adt').read_bytes(),
         report.get('gpu_mode'),(temporary/'kernel.macho').read_bytes())
@@ -98,6 +102,12 @@ with tempfile.TemporaryDirectory() as directory:
         print('Embedded ADT matches the built-in platform and CPU drivers')
     config=tomllib.loads((temporary/'unixnu.toml').read_text())
     debug_args=report['kernel_args'].split()
+    if gpu_hostonly != ('giulia_gpu_hostonly=1' in debug_args):
+        raise SystemExit('Host-only GPU boot argument/report mismatch')
+    if gpu_hostonly and 'giulia_gpu=1' not in debug_args:
+        raise SystemExit('Host-only GPU boot argument requires mode 1')
+    if gpu_hostonly and b'giulia_gpu_hostonly\0' not in (temporary/'kernel.macho').read_bytes():
+        raise SystemExit('Kernel lacks the GPU host-only boot policy')
     if bool(report.get('debug_terminal_enabled')) != ('giulia_debug=1' in debug_args):
         raise SystemExit('Debug terminal boot argument/report mismatch')
     if bool(report.get('debug_mmio_enabled')) != ('giulia_mmio=1' in debug_args):
@@ -164,7 +174,7 @@ with tempfile.TemporaryDirectory() as directory:
             if not report.get('physical_touch_worker') or b'GIULIA TOUCH: GPIO SPI mode 0 active;' not in (temporary/'kernel.macho').read_bytes():
                 raise SystemExit('GPIO SPI worker missing from the kernel')
             expected+=' giulia_touch_gpio=1'
-        if report.get('gpu_mode'):expected+=' giulia_gpu='+str(report['gpu_mode'])
+        if report.get('gpu_mode') and not gpu_hostonly:expected+=' giulia_gpu='+str(report['gpu_mode'])
         if report.get('audio_prepare'):expected+=' giulia_audio=1'
         if report.get('physical_slider_worker'):
             if (not report.get('platform_match',{}).get('gui') or

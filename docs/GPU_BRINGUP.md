@@ -368,3 +368,11 @@ AArch64 汇编，并用明确标注的主机 hook 验证缓存行范围及屏障
 实验后保持 CM3 复位、断开 stream、关闭 context 并恢复原厂 TCM。
 原厂 GMU/HFI 与 Metal 尚未接通。证据、限制和复现源码见
 [GPU_TERMINAL_BRINGUP.md](GPU_TERMINAL_BRINGUP.md)。
+
+## 无根卷的 host-only 诊断
+
+`make-ios16-payload.py --gpu-mode 1 --gpu-hostonly` 支持采用 UFS 只读探测入口。
+此入口可在保持 GUI 平台身份、嵌入匹配 GPU 固件并具备 Gunyah 报告占位的 ADT 上使用。
+省略 root report 时，生成的启动参数包含 `giulia_ufs_probe=1`、`giulia_gpu=1` 和
+`giulia_gpu_hostonly=1`。独立负载校验会核对该参数、报告、固件段及已编译的隔离策略。
+模式2/3继续沿用其原有前置条件。真实供电、资源交接、GPU执行和渲染仍需单独验收。

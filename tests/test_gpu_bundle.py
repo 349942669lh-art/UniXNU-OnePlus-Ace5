@@ -262,6 +262,69 @@ if report.get('gpu_mode')==3:
             self.assertIn('--gpu-hostonly requires --gpu-mode 1', result.stderr)
             self.assertFalse(self.output.exists())
 
+    @unittest.skipUnless(shutil.which('mformat') and shutil.which('mcopy'), 'FAT host tools')
+    def test_real_rootless_hostonly_payload_and_verifier(self):
+        actual_repo = self.root / 'actual-payload-repo'
+        shutil.copytree(ROOT / 'scripts', actual_repo / 'scripts')
+        pins = actual_repo / 'ios16/gpu'
+        pins.mkdir(parents=True)
+        shutil.copyfile(self.repo / 'ios16/gpu/giulia_gpu_firmware_pin.h',
+                        pins / 'giulia_gpu_firmware_pin.h')
+        kernel = bytearray(self.kernel.read_bytes())
+        wifi_marker = b'GIULIA WIFI: PCIe/MHI/QMI/WMI ready;'
+        kernel = kernel.replace(wifi_marker, bytes(len(wifi_marker)))
+        extra = (b"{ 'IOClass' = SweetPlatformExpert; 'IOProviderClass' = IOPlatformExpertDevice; "
+                 b"'IONameMatch' = 'oneplus,giulia'; }\0"
+                 b"{ 'IOClass' = SweetCPU; 'IOProviderClass' = IOPlatformDevice; "
+                 b"'IONameMatch' = 'arm,armv8'; }\0"
+                 b'IOMobileFramebufferUserClient\0IOCoreSurfaceRoot\0SWEET HID: touch registered\0'
+                 b'GIULIA SHELL: /dev/giulia-debug ready;\0giulia_gpu_hostonly\0')
+        at = len(kernel) - 0x1000
+        self.assertFalse(any(kernel[at:at + len(extra)]))
+        kernel[at:at + len(extra)] = extra
+        append = runpy.run_path(str(ROOT / 'scripts/embed-gpu-firmware.py'))['append_pack']
+        embedded, firmware = append(bytes(kernel), self.packs['gpu'].read_bytes(), self.digests['gpu'])
+        binary = self.root / 'rootless.macho'
+        binary.write_bytes(embedded)
+        binary.with_suffix('.json').write_text(json.dumps({
+            'output_sha256': hashlib.sha256(embedded).hexdigest(), 'boot_args_bytes': 736,
+            'gpu_runtime_included': True, 'gpu_firmware': firmware}))
+
+        def node(name, properties=(), children=()):
+            properties = [('name', name.encode() + b'\0'), *properties]
+            return (struct.pack('<II', len(properties), len(children)) + b''.join(
+                struct.pack('<32sI', key.encode(), len(value)) + value + bytes(-len(value) % 4)
+                for key, value in properties) + b''.join(children))
+
+        adt = node('device-tree', [
+            ('compatible', b'D22AP\0iPhone10,3\0oneplus,giulia\0qcom,sm8650\0'),
+            ('model', b'iPhone10,3\0'), ('physical-model', b'OnePlus Ace 5\0')], [
+            node('cpus', children=[node('cpu0', [('compatible', b'arm,armv8\0')])]),
+            node('arm-io', children=[node('disp0')]), node('product'),
+            node('chosen', [('dram-base', bytes(8)), ('dram-size', bytes(8)),
+                            ('darwinboot-memory-size', struct.pack('<Q', 0x10000000))],
+                 [node('memory-map')])])
+        from ios16_gpu_gunyah import add_request
+        tree = self.root / 'rootless.adt'
+        tree.write_bytes(add_request(adt))
+        output = self.root / 'real-rootless-payload'
+        result = subprocess.run([sys.executable, str(actual_repo / 'scripts/make-ios16-payload.py'),
+            '--kernel', str(binary), '--adt', str(tree), '--out', str(output),
+            '--gpu-mode', '1', '--gpu-hostonly', '--debug-terminal'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads((output / 'payload.json').read_text())
+        self.assertTrue(report['gpu_hostonly'])
+        self.assertNotIn('root_finder_id', report)
+        self.assertIn('giulia_gpu=1 giulia_gpu_hostonly=1', report['kernel_args'])
+        self.assertNotIn('vermeer_ufs_rw=1', report['kernel_args'])
+        verify = [sys.executable, str(actual_repo / 'scripts/verify-payload.py'), str(output)]
+        result = subprocess.run(verify, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report['gpu_hostonly'] = False
+        (output / 'payload.json').write_text(json.dumps(report))
+        result = subprocess.run(verify, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+
     def test_stale_kernel_without_cx_definition_fails_before_build(self):
         binary = self.kernel.read_bytes().replace(b'_ggcx_enable\0', b'_ggcx_unlink\0')
         self.kernel.write_bytes(binary)
