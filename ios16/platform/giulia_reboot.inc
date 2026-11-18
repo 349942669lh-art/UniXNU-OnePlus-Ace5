@@ -84,8 +84,14 @@ static void gr_worker(void *unused,wait_result_t wait)
 {
     (void)unused;(void)wait;
     gr_runtime.reboot_thread=current_thread();
-    int error=0;
-    int64_t version=gr_smc(0x84000000u,0),feature=-1;
+    int error=0,read_probe=0,diagnostic=gr_readonly_probe();
+    int64_t version=0,feature=-1;
+    PE_parse_boot_argn("giulia_ufs_probe",&read_probe,sizeof(read_probe));
+    if(read_probe==1 && !diagnostic) {
+        printf("GIULIA REBOOT: read-only reset refused (probe incomplete or profile unsupported)\n");
+        goto out;
+    }
+    version=gr_smc(0x84000000u,0);
     if(version>=0x10000)feature=gr_smc(0x8400000au,0x84000009u);
     if(version<0x10000 || feature<0) {
         printf("GIULIA REBOOT: unsupported PSCI version=%lld reset_feature=%lld\n",(long long)version,(long long)feature);
@@ -103,7 +109,7 @@ static void gr_worker(void *unused,wait_result_t wait)
     gr_sleep(500);
     /* The completed read-only diagnostic parks BSD root selection. Keep its
      * scheduler and CDC alive through acknowledgement and the global reset. */
-    if(gr_readonly_probe())error=gr_reset("read-only-probe");
+    if(diagnostic)error=gr_reset("read-only-probe");
     else error=reboot_kernel(RB_AUTOBOOT,NULL);
     __atomic_store_n(&gr_runtime.reset_armed,0u,__ATOMIC_RELEASE);
     printf("GIULIA REBOOT: shutdown returned=%d reason_restore=%d\n",error,grb_restore(&gr_io,&gr_runtime.state));

@@ -443,6 +443,7 @@ def reboot_acknowledged(capture):
 
 def reboot_failed(capture):
     return any('GIULIA REBOOT: PSCI SYSTEM_RESET returned=' in line or
+               'GIULIA REBOOT: read-only reset refused' in line or
                'GIULIA REBOOT: shutdown returned=' in line
                for line in [*capture.lines, capture.pending])
 

@@ -263,6 +263,18 @@ class Terminal(unittest.TestCase):
                 self.assertFalse(terminal.reboot_failed(capture))
             finally:capture.close()
 
+    def test_unready_probe_refuses_before_preparing_restart_reason(self):
+        source=(ROOT/'ios16/platform/giulia_reboot.inc').read_text()
+        self.assertLess(source.index('if(read_probe==1 && !diagnostic)'),
+                        source.index('error=grb_prepare(&gr_io'))
+        with tempfile.TemporaryDirectory() as directory:
+            capture=terminal.Capture(Path(directory))
+            try:
+                capture.feed(b'GIULIA REBOOT: read-only reset refused (probe incomplete or profile unsupported)\n')
+                self.assertFalse(terminal.reboot_acknowledged(capture))
+                self.assertTrue(terminal.reboot_failed(capture))
+            finally:capture.close()
+
     def test_fastboot_wait_matches_requested_device(self):
         times=iter([0,.1,.2,.6,.7,.8])
         runner=Mock(side_effect=[SimpleNamespace(returncode=0,stdout='other\tfastboot\n'),
