@@ -5,7 +5,8 @@
 #ifndef GIULIA_GPU_RSC_H
 #define GIULIA_GPU_RSC_H
 #include <stdint.h>
-#define GGRSC_ABI 1u
+#define GGRSC_ABI 2u
+#define GGRSC_LEGACY_ABI 1u
 #define GGRSC_IDENTITY "GIULIA GPU RSC: owned-active-tcs transport unbound"
 enum { GGRSC_V27=27, GGRSC_V30=30 };
 enum { GGRSC_OK=0, GGRSC_ARGUMENT, GGRSC_USED, GGRSC_BUSY, GGRSC_PENDING,
@@ -14,6 +15,9 @@ struct ggrsc_config {
     uint32_t abi,version,mapped_bytes,tcs_id;
     uint32_t arc_address,selector_mask,timeout_us,reserved;
     uint64_t epoch;
+    /* ABI 2 optional second ARC binding. Both zero preserves a single target.
+     * ABI 1 callers end at epoch and these members MUST NOT be read. */
+    uint32_t second_arc_address,second_selector_mask;
 };
 struct ggrsc_io {
     void *cookie;
@@ -43,6 +47,7 @@ struct ggrsc_state {
     uint32_t control,status,wait,enable,msg,addr,data,cmd_status;
     uint32_t initialized,ready,inflight,closed,quarantined;
     uint32_t mutation_attempted,trigger_attempted,selector,last_code,polls;
+    uint32_t arc_address; /* target of the retained serial, including uncertainty */
 };
 #ifdef __cplusplus
 extern "C" {
@@ -62,6 +67,11 @@ int ggrsc_open(struct ggrsc_state *,const struct ggrsc_config *,const struct ggr
  * Completion DOES NOT withdraw the voltage request or release native leases.
  * Resource-level aggregation/withdrawal belongs to the future native source. */
 int ggrsc_submit(struct ggrsc_state *,uint32_t,uint64_t *);
+/* Uses only either binding copied by open. One shared TCS and serial stream,
+ * one in-flight request across both resources. No new mapping or reopening.
+ * Each target has its own selector mask. The owner must retain/reconcile BOTH
+ * resources after any partial sequence, including a completed first request. */
+int ggrsc_submit_arc(struct ggrsc_state *,uint32_t address,uint32_t selector,uint64_t *);
 /* Real target IRQ transition + issued/completed command status + idle TCS,
  * then ordered trigger disable/command disable/masked W1C + readback.
  * Neither ACK nor a write readback alone is command completion. Poll bounded

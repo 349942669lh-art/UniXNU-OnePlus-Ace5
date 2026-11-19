@@ -81,9 +81,9 @@ SYMBOLS = tuple('_giulia_gpu_' + name for name in (
           'initialize','open','acquire','release','close','invalidate','status')) + tuple(
       '_ggarc_' + name for name in ('identity','resolve','select')) + tuple(
       '_ggav_' + name for name in ('identity','init','add','remove','base','finish','quarantine','status')) + tuple(
-      '_ggrsc_' + name for name in ('identity','open','submit','poll','close','invalidate')) + tuple(
+      '_ggrsc_' + name for name in ('identity','open','submit','submit_arc','poll','close','invalidate')) + tuple(
       '_giulia_gpu_rsc_native_' + name for name in (
-          'identity','initialize','open','submit','poll','close','invalidate','status')) + tuple(
+          'identity','initialize','open','submit','submit_arc','poll','close','invalidate','status')) + tuple(
       '_ggcb_' + name for name in ('identity','describe','open','apply','invalidate')) + tuple(
       '_ggrc_' + name for name in ('identity','describe','open','apply','invalidate')) + tuple(
       '_ggp1_' + name for name in ('identity','describe','open','start','invalidate')) + (

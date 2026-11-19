@@ -49,7 +49,7 @@ assert const('TCS_AMC_MODE_ENABLE') == 1 << 16 and const('TCS_AMC_MODE_TRIGGER')
 for path in (ROOT / 'ios16').rglob('*'):
     if path.suffix in ('.c', '.cpp', '.h', '.inc') and path.name not in (
             'giulia_gpu_rsc.c', 'giulia_gpu_rsc.h', 'giulia_gpu_rsc_native.cpp'):
-        assert not re.search(r'\bggrsc_(open|submit|poll)\s*\(', path.read_text()), path
+        assert not re.search(r'\bggrsc_(open|submit|submit_arc|poll)\s*\(', path.read_text()), path
 flags = ['-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-g']
 cc, cxx = os.environ.get('CC', 'cc'), os.environ.get('CXX', 'c++')
 with tempfile.TemporaryDirectory(prefix='gpu-rsc-') as directory:
@@ -72,6 +72,7 @@ int main(){ggrsc_state s={};uint64_t serial=0;
 assert(std::strcmp(ggrsc_identity(),GGRSC_IDENTITY)==0);
 assert(ggrsc_open(&s,nullptr,nullptr)==GGRSC_ARGUMENT);
 assert(ggrsc_submit(&s,0,&serial)==GGRSC_ARGUMENT);
+assert(ggrsc_submit_arc(&s,0x30010,4,&serial)==GGRSC_ARGUMENT);
 assert(ggrsc_poll(&s,1)==GGRSC_ARGUMENT);
 assert(ggrsc_close(&s)==GGRSC_ARGUMENT);ggrsc_invalidate(&s);}
 ''')
@@ -100,7 +101,7 @@ assert(ggrsc_close(&s)==GGRSC_ARGUMENT);ggrsc_invalidate(&s);}
         at += size
     assert at == 32 + cmd_bytes and symtab
     offset, count, strings, string_bytes = symtab
-    required = {('_ggrsc_' + name).encode() for name in ('identity', 'open', 'submit', 'poll', 'close', 'invalidate')}
+    required = {('_ggrsc_' + name).encode() for name in ('identity', 'open', 'submit', 'submit_arc', 'poll', 'close', 'invalidate')}
     found = set()
     for i in range(count):
         index, kind, section, _, value = struct.unpack_from('<IBBHQ', data, offset + 16*i)
@@ -109,4 +110,4 @@ assert(ggrsc_close(&s)==GGRSC_ARGUMENT);ggrsc_invalidate(&s);}
             assert kind == 0x0f and 1 <= section <= len(sections) and sections[section-1] & 0x80000400
             found.add(name)
     assert found == required
-print('GPU RPMh RSC: pinned layout/6 C exports/C++ caller/ARM64 Mach-O passed; guarded native executor is the only allowed caller; authority UNBOUND')
+print('GPU RPMh RSC: pinned layout/7 C exports/C++ caller/ARM64 Mach-O passed; guarded native executor is the only allowed caller; authority UNBOUND')

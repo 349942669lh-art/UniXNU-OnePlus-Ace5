@@ -89,3 +89,41 @@ DB acquisition, shared ARC aggregation and parent clock/reset/IRQ/SMMU lifetime.
 GPUCC/GDSC clock programming and a complete `ggpo_source` are not implemented by
 this unit. Power-only boot remains inadmissible, and GMU/HFI/CP/render/Metal
 enablement remains disabled until those independent prerequisites are satisfied.
+
+## Shared CX and MX transport
+
+The ABI 2 configuration can copy a second ARC address and its independent
+selector mask. Both fields zero selects one resource. The original 40-byte
+ABI 1 configuration remains accepted and is copied without reading the ABI 2
+suffix. State and status objects must be rebuilt against the current headers.
+
+`ggrsc_submit_arc` and `giulia_gpu_rsc_native_submit_arc` select one of those
+copied bindings. The existing submit entry points continue to select the first
+binding. Both resources share one assigned TCS, mapping, lock, grant and serial
+stream. An in-flight request blocks submission to either resource.
+
+Dual-resource sessions require ABI 2 native authority. Its approval callback
+checks `scope.request_address` together with the selector and keeps that
+aggregate reserved through completion. Take receives both bindings with
+`request_address` zero. Settlement must reconcile every earlier request on
+both resources before the shared grant can be dropped. A failed second vote
+retains the first vote's completed serial and quarantines the shared session.
+
+The 2026-11-18 Lanai boot source describes one HLOS DRV with ACTIVE TCS 0–2,
+sleep TCS 3–4 and wake TCS 5–6. Its EBS callback uninstalls the RPMh protocol
+and clears TCS control and command-enable fields for all seven TCSs. These
+source facts guide the handoff implementation. Candidate execution and
+post-EBS resource lifetime still require validation.
+
+GCC and Clang RAM tests cover alternating resources, independent masks,
+copied bindings, shared busy handling, legacy configuration bounds and loss
+through the second request. Production registration and hardware power-only
+qualification remain pending.
+
+The local Lanai UEFI source for build
+`23851_16.1.0.3_2026111805140000_noroot` confirms three ACTIVE TCSs and
+two each for sleep and wake on the HLOS DRV. Its RPMh EBS callback uninstalls
+the protocol and clears control and command enable for all configured TCSs.
+The source digest and TCS partition are recorded in the hardware manifest.
+Candidate EBS completion, current-boot delegation and persistent rail requests
+still require a native platform source and observed handoff.

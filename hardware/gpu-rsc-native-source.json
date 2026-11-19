@@ -12,7 +12,10 @@
   "static_board_source": {
     "project": "SM8650_B_master",
     "path": "vnd/kernel_platform/qcom/proprietary/devicetree/qcom/pineapple.dtsi",
-    "source_lines": [725, 764],
+    "source_lines": [
+      725,
+      764
+    ],
     "method": "Authorized browser UIA, continuous line-numbered text reconstruction, NOT raw download or Git blob",
     "reconstructed_sha256": "e01a859fd96141cb251f71896a72c7a8407b56adc0faeef5a0c9ccd1aebc1183",
     "internal_revision": null,
@@ -20,7 +23,10 @@
     "private_source_uploaded": false
   },
   "register_protocol_reference": "hardware/gpu-rsc-source.json",
-  "supported_versions": [27, 30],
+  "supported_versions": [
+    27,
+    30
+  ],
   "scope_restrictions": [
     "Explicit source take required before mapping or metadata read",
     "No TCS auto-selection; only an already-assigned ACTIVE TCS 0..2",
@@ -33,5 +39,25 @@
   "production_authority_bound": false,
   "hardware_validated": false,
   "power_only_boot_admissible": false,
-  "acceleration": false
+  "acceleration": false,
+  "local_boot_source": {
+    "build": "23851_16.1.0.3_2026111805140000_noroot",
+    "path": "msm_amss/BOOT.MXF.2.1/boot_images/boot/QcomPkg/SocPkg/Lanai/Library/RpmhTargetLib/cfg/Lanai/uefi/rpmh_drv_config.c",
+    "sha256": "f225ed861769fa9c57d861d1c616f07ffe87ba0302b74f934d388d5819072154",
+    "active_tcs": [
+      0,
+      1,
+      2
+    ],
+    "sleep_tcs": [
+      3,
+      4
+    ],
+    "wake_tcs": [
+      5,
+      6
+    ],
+    "candidate_current_boot_assignment_verified": false,
+    "private_source_uploaded": false
+  }
 }

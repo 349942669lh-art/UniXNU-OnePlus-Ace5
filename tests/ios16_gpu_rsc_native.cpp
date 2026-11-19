@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+#include <cstddef>
 #include <mutex>
 #include <thread>
 struct IOLock { std::mutex mutex; };
@@ -60,7 +62,7 @@ extern "C" int gpr_global_quarantine(const gpr_token *t,const void *o,uint64_t e
 #undef BROKER
 struct Fixture {
     IOService source,foreign;
-    ggrsc_config config={GGRSC_ABI,GGRSC_V30,0xf300,0,0x30010,0x1fe,100,0,17};
+    ggrsc_config config={GGRSC_ABI,GGRSC_V30,0xf300,0,0x30010,0x1fe,100,0,17,0,0};
     int takeResult=1,approveResult=1,settledResult=1,dropResult=0;
     uint64_t offeredGrant=61;
     bool granted=false,valid=true,complete=true,started=false,finished=false;
@@ -68,6 +70,7 @@ struct Fixture {
     bool alterCaller=false;
     ggrn_authority *callerOps=nullptr;
     unsigned takes=0,lives=0,approvals=0,settles=0,drops=0,starts=0,loseAt=0;
+    uint32_t approvedAddress=0;
     std::mutex mutex;std::condition_variable condition;
     uint32_t &reg(unsigned offset){return ram[(0xd00+offset)/4];}
     unsigned control(){return 672*config.tcs_id+(config.version==30?0x24:0x14);}
@@ -85,11 +88,15 @@ struct Fixture {
     static int live(void *p,uint64_t e,uint64_t grant){auto &f=*(Fixture *)p;assert(f.granted && e==17 && grant==61);
         ++f.lives;if(f.lives==f.loseAt)f.valid=false;return f.valid?1:0;}
     static int approve(void *p,const ggrn_scope *s,uint64_t grant,uint32_t selector){auto &f=*(Fixture *)p;
-        scope(s);assert(f.granted && grant==61 && selector<16 && !nativeRsc.core.inflight);++f.approvals;
+        scope(s);assert(f.granted && grant==61 && selector<16 && !nativeRsc.core.inflight);
+        assert(s->request_address==s->transport.arc_address ||
+            (s->request_address && s->request_address==s->transport.second_arc_address));
+        f.approvedAddress=s->request_address;++f.approvals;
         return f.approveResult;}
     static int settled(void *p,const ggrn_scope *s,uint64_t grant,uint64_t completed,uint32_t selector){
         auto &f=*(Fixture *)p;scope(s);assert(f.granted && grant==61 && !nativeRsc.core.inflight &&
-            nativeRsc.core.completed==completed && nativeRsc.core.selector==selector);++f.settles;return f.settledResult;}
+            nativeRsc.core.completed==completed && nativeRsc.core.selector==selector &&
+            s->request_address==nativeRsc.core.arc_address);++f.settles;return f.settledResult;}
     static int drop(void *p,const ggrn_scope *s,uint64_t grant){auto &f=*(Fixture *)p;scope(s);++f.drops;
         assert(f.granted && grant==61 && !nativeRsc.map && !nativeRsc.memory && nativeRsc.leased &&
             gpr_global_owns(&nativeRsc.page,&nativeRsc,17));
@@ -142,6 +149,86 @@ static void reset(Fixture &f){
     std::memset(ram,0,sizeof(ram));mapFault=brokerFault=mapAccesses=0;hostTime=0;
 }
 static unsigned cases;
+static void pairSetup(Fixture &f,unsigned version=30,unsigned tcs=0){
+    setup(f,version,tcs);f.config.arc_address=0x30000;f.config.selector_mask=1u<<3;
+    f.config.second_arc_address=0x30010;f.config.second_selector_mask=1u<<4;
+}
+static int secondSubmit(Fixture &f,uint64_t *serial){
+    return giulia_gpu_rsc_native_submit_arc(&f.source,0x30010,4,serial);
+}
+static void pairTests(){
+    uint64_t serial=0;
+    for(unsigned version: {27u,30u})for(unsigned tcs=0;tcs<3;tcs++){
+        Fixture f;pairSetup(f,version,tcs);assert(!f.open());
+        assert(!f.submit(&serial) && serial==1 && f.approvedAddress==0x30000);
+        assert(!f.poll(serial));unsigned maps=mapCreated,accesses=mapAccesses,approvals=f.approvals;
+        assert(giulia_gpu_rsc_native_submit_arc(&f.source,0x30020,4,&serial)==GGRN_ARGUMENT && !serial);
+        assert(giulia_gpu_rsc_native_submit_arc(&f.source,0x30010,3,&serial)==GGRN_ARGUMENT && !serial);
+        assert(giulia_gpu_rsc_native_submit_arc(&f.source,0,4,&serial)==GGRN_ARGUMENT && !serial);
+        assert(giulia_gpu_rsc_native_submit_arc(&f.source,0x30010,16,&serial)==GGRN_ARGUMENT && !serial);
+        assert(accesses==mapAccesses && approvals==f.approvals);
+        f.approveResult=0;assert(secondSubmit(f,&serial)==GGRN_BUSY && !serial);
+        assert(f.statusSnapshot().arc_address==0x30000 && f.statusSnapshot().completed==1);
+        f.approveResult=1;f.complete=false;assert(!secondSubmit(f,&serial) && serial==2);
+        assert(f.approvedAddress==0x30010 && f.statusSnapshot().arc_address==0x30010);
+        assert(f.reg(nativeRsc.core.addr)==0x30010 && f.reg(nativeRsc.core.data)==4);
+        uint64_t busy=99;assert(f.submit(&busy)==GGRN_BUSY && !busy);
+        assert(f.close()==GGRN_BUSY && mapCreated==maps && !f.drops);
+        f.complete=true;assert(!f.poll(serial));assert(f.statusSnapshot().completed==2);
+        assert(!f.submit(&serial) && serial==3 && f.approvedAddress==0x30000);
+        assert(!f.poll(serial));f.settledResult=0;assert(f.close()==GGRN_BUSY);
+        f.settledResult=1;assert(!f.close() && f.drops==1);reset(f);++cases;
+    }
+    // Loss at each authority boundary of the second request retains the
+    // first resource vote and the entire shared mapping/grant.
+    for(unsigned phase=0;phase<2;phase++){
+        Fixture base;pairSetup(base);assert(!base.open() && !base.submit(&serial) && !base.poll(serial));
+        if(phase)assert(!secondSubmit(base,&serial));
+        unsigned before=base.lives;
+        assert(!(phase?base.poll(serial):secondSubmit(base,&serial)));
+        unsigned boundaries=base.lives-before;reset(base);
+        for(unsigned boundary=1;boundary<=boundaries;boundary++){
+            Fixture f;pairSetup(f);assert(!f.open() && !f.submit(&serial) && !f.poll(serial));
+            if(phase)assert(!secondSubmit(f,&serial));
+            f.loseAt=f.lives+boundary;
+            assert((phase?f.poll(serial):secondSubmit(f,&serial))==GGRN_QUARANTINED);
+            assert(f.statusSnapshot().completed>=1 && !f.drops);
+            f.pinned();reset(f);++cases;
+        }
+    }
+    for(unsigned fault=0;fault<2;fault++){
+        Fixture f;pairSetup(f);assert(!f.open() && !f.submit(&serial) && !f.poll(serial));
+        if(fault==0){
+            f.complete=false;assert(!secondSubmit(f,&serial));hostTime=100000;
+            assert(f.poll(serial)==GGRN_QUARANTINED);
+            assert(f.statusSnapshot().arc_address==0x30010 && f.statusSnapshot().inflight);
+        }else{
+            f.approveResult=-1;unsigned accesses=mapAccesses;
+            assert(secondSubmit(f,&serial)==GGRN_QUARANTINED && accesses==mapAccesses);
+        }
+        assert(f.statusSnapshot().completed==1 && !f.drops);
+        f.pinned();reset(f);++cases;
+    }
+    for(unsigned bad=0;bad<7;bad++){
+        Fixture f;pairSetup(f);auto a=f.authority();
+        switch(bad){case 0:f.config.second_arc_address=0;break;
+        case 1:f.config.second_selector_mask=0;break;
+        case 2:f.config.second_arc_address=f.config.arc_address;break;
+        case 3:f.config.second_arc_address=0x40010;break;
+        case 4:f.config.second_arc_address|=1;break;
+        case 5:f.config.second_selector_mask=0x10000;break;
+        case 6:a.abi=GGRN_LEGACY_ABI;break;}
+        assert(giulia_gpu_rsc_native_open(&f.source,&f.config,&a)==GGRN_ARGUMENT);
+        assert(!f.takes && !nativeRsc.used && !mapAccesses);reset(f);++cases;
+    }
+    {
+        Fixture f;setup(f);f.config.abi=GGRSC_LEGACY_ABI;auto a=f.authority();a.abi=GGRN_LEGACY_ABI;
+        const size_t bytes=offsetof(ggrsc_config,second_arc_address);assert(bytes==40);
+        void *legacy=std::malloc(bytes);assert(legacy);std::memcpy(legacy,&f.config,bytes);
+        assert(!giulia_gpu_rsc_native_open(&f.source,(ggrsc_config *)legacy,&a));std::free(legacy);
+        assert(!f.submit(&serial) && !f.poll(serial) && !f.close());reset(f);++cases;
+    }
+}
 int main(){
     ggrn_status status={};IOService none;uint64_t serial=0;
     assert(!std::strcmp(giulia_gpu_rsc_native_identity(),GGRN_IDENTITY));
@@ -288,5 +375,6 @@ int main(){
         worker.join();invalidator.join();assert(submitCode==GGRN_QUARANTINED && invalidateCode==GGRN_QUARANTINED);
         assert(!f.drops && f.statusSnapshot().mapped);f.pinned();reset(f);++cases;
     }
+    pairTests();
     std::printf("GPU native RSC: %u RAM-only cases passed; no hardware/provider registration\n",cases);
 }

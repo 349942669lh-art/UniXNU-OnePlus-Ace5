@@ -5,6 +5,8 @@
 #include "rsc-source-layout.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 enum { WORDS=65536/4, EVENTS=512 };
@@ -70,7 +72,7 @@ static unsigned off(unsigned index)
 static void setup(unsigned version,unsigned id)
 {
     memset(&m,0,sizeof(m));memset(&s,0,sizeof(s));memset(&cfg,0,sizeof(cfg));
-    cfg.abi=1;cfg.version=version;cfg.mapped_bytes=65536;cfg.tcs_id=id;
+    cfg.abi=GGRSC_ABI;cfg.version=version;cfg.mapped_bytes=65536;cfg.tcs_id=id;
     cfg.arc_address=0x30000;cfg.selector_mask=0xffff;cfg.timeout_us=10000;cfg.epoch=271;
     m.alive=1;m.now=100;m.regs[0]=1u<<id;m.regs[off(3)/4]=1;
     /* Foreign pending IRQ must remain untouched, even with id 31. */
@@ -145,8 +147,88 @@ static void clean_faults(void)
         }
     }
 }
+static void pair_setup(unsigned version,unsigned id)
+{
+    setup(version,id);
+    cfg.selector_mask=1u<<3;
+    cfg.second_arc_address=0x30010;
+    cfg.second_selector_mask=1u<<4;
+}
+static void first_resource(void)
+{
+    uint64_t serial=0;
+    assert(!ggrsc_open(&s,&cfg,&io));
+    assert(!ggrsc_submit(&s,3,&serial) && serial==1);
+    complete();assert(!ggrsc_poll(&s,serial) && s.completed==1);
+}
+static int second_resource(void)
+{
+    uint64_t serial=0;
+    int code=ggrsc_submit_arc(&s,0x30010,4,&serial);
+    if(!code){complete();code=ggrsc_poll(&s,serial);}
+    if(!code)code=ggrsc_close(&s);
+    return code;
+}
+static void pair_tests(void)
+{
+    for(unsigned version=27;version<=30;version+=3) {
+        for(unsigned id=0;id<32;id++) {
+            pair_setup(version,id);first_resource();
+            unsigned calls=m.calls;uint64_t serial=99;
+            assert(ggrsc_submit_arc(&s,0,4,&serial)==GGRSC_ARGUMENT && !serial);
+            assert(ggrsc_submit_arc(&s,0x30020,4,&serial)==GGRSC_ARGUMENT && !serial);
+            assert(ggrsc_submit_arc(&s,0x30010,3,&serial)==GGRSC_ARGUMENT && !serial);
+            assert(ggrsc_submit_arc(&s,0x30000,4,&serial)==GGRSC_ARGUMENT && !serial);
+            assert(m.calls==calls && s.completed==1 && s.arc_address==0x30000);
+            /* The copied binding survives caller changes. */
+            cfg.second_arc_address=0x30020;cfg.second_selector_mask=1u<<5;
+            assert(!ggrsc_submit_arc(&s,0x30010,4,&serial) && serial==2);
+            assert(s.arc_address==0x30010 && m.regs[off(6)/4]==0x30010);
+            assert(ggrsc_submit(&s,3,&serial)==GGRSC_BUSY && !serial);
+            assert(s.serial==2 && s.arc_address==0x30010 && s.completed==1);
+            complete();assert(!ggrsc_poll(&s,2));
+            assert(!ggrsc_submit(&s,3,&serial) && serial==3 && s.arc_address==0x30000);
+            complete();assert(!ggrsc_poll(&s,3) && !ggrsc_close(&s));++cases;
+        }
+        pair_setup(version,1);first_resource();unsigned before=m.calls;
+        assert(!second_resource());unsigned boundaries=m.calls-before;
+        for(unsigned boundary=1;boundary<=boundaries;boundary++) {
+            for(unsigned loss=0;loss<2;loss++) {
+                pair_setup(version,1);first_resource();
+                if(loss)m.lose_at=m.calls+boundary;else m.fail_at=m.calls+boundary;
+                assert(second_resource()!=GGRSC_OK && s.quarantined && s.completed>=1);
+                assert(!m.callbacks_after_loss && s.serial<=2);
+                if(s.serial==2)assert(s.arc_address==0x30010);
+                unsigned calls=m.calls;uint64_t serial=99;
+                assert(ggrsc_submit(&s,3,&serial)==GGRSC_QUARANTINED && !serial);
+                assert(ggrsc_submit_arc(&s,0x30010,4,&serial)==GGRSC_QUARANTINED && !serial);
+                assert(ggrsc_close(&s)==GGRSC_QUARANTINED && m.calls==calls);++cases;
+            }
+        }
+    }
+    for(unsigned bad=0;bad<6;bad++) {
+        pair_setup(30,0);
+        switch(bad) {
+        case 0:cfg.second_arc_address=0;break;
+        case 1:cfg.second_selector_mask=0;break;
+        case 2:cfg.second_arc_address=cfg.arc_address;break;
+        case 3:cfg.second_arc_address=0x40010;break;
+        case 4:cfg.second_arc_address|=1;break;
+        case 5:cfg.second_selector_mask=0x10000;break;
+        }
+        assert(ggrsc_open(&s,&cfg,&io)==GGRSC_ARGUMENT && !m.calls && !m.live_calls);++cases;
+    }
+    /* The old 40-byte config is accepted without reading ABI 2 fields. */
+    setup(30,0);cfg.abi=GGRSC_LEGACY_ABI;
+    size_t bytes=offsetof(struct ggrsc_config,second_arc_address);
+    assert(bytes==40);void *legacy=malloc(bytes);assert(legacy);memcpy(legacy,&cfg,bytes);
+    assert(!ggrsc_open(&s,legacy,&io));free(legacy);
+    uint64_t serial=0;assert(!ggrsc_submit(&s,3,&serial));
+    complete();assert(!ggrsc_poll(&s,serial) && !ggrsc_close(&s));++cases;
+}
 int main(void)
 {
+    pair_tests();
     assert(strcmp(ggrsc_identity(),GGRSC_IDENTITY)==0);
     for(unsigned ver=27;ver<=30;ver+=3)
         for(unsigned id=0;id<32;id++)for(unsigned selector=0;selector<16;selector++)success(ver,id,selector);
@@ -174,7 +256,7 @@ int main(void)
     for(unsigned bad=0;bad<18;bad++) {
         setup(30,0);struct ggrsc_io test=io;
         switch(bad) {
-        case 0:cfg.abi=2;break;case 1:cfg.version=31;break;case 2:cfg.tcs_id=32;break;
+        case 0:cfg.abi=GGRSC_ABI+1;break;case 1:cfg.version=31;break;case 2:cfg.tcs_id=32;break;
         case 3:cfg.epoch=0;break;case 4:cfg.arc_address=0x40000;break;
         case 5:cfg.arc_address=0x30001;break;case 6:cfg.selector_mask=0;break;
         case 7:cfg.selector_mask=0x10000;break;case 8:cfg.timeout_us=0;break;

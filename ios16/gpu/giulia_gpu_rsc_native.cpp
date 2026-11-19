@@ -104,9 +104,10 @@ static int nativeRscWrite(void *,uint32_t offset,uint32_t value)
        (offset==s->control && value!=0u && value!=(1u<<16) && value!=((1u<<16)|(1u<<24))) ||
        ((offset==s->wait || offset==s->enable) && value>1u) ||
        (offset==s->msg && value!=(8u|(1u<<8)|(1u<<16))) ||
-       (offset==s->addr && value!=s->config.arc_address) ||
+       (offset==s->addr && value!=s->arc_address) ||
        (offset==s->data && (value!=s->selector || value>=16u ||
-         !(s->config.selector_mask&(1u<<value)))))return -1;
+         !((s->arc_address==s->config.arc_address ? s->config.selector_mask :
+            s->config.second_selector_mask)&(1u<<value)))))return -1;
     uintptr_t base=nativeRsc.map->getVirtualAddress();
     if(!base || (base&3u) || !nativeRscLive(NULL,nativeRsc.scope.transport.epoch))return -1;
     nativeRscBarrier();
@@ -126,11 +127,18 @@ static int nativeRscDelay(void *,unsigned us)
 }
 static int nativeRscConfig(const struct ggrsc_config *c)
 {
-    return c && c->abi==GGRSC_ABI && (c->version==GGRSC_V27 || c->version==GGRSC_V30) &&
-        c->epoch && !c->reserved && c->tcs_id<3u && c->mapped_bytes==0xf300u &&
-        c->arc_address && !(c->arc_address&0xfff00003u) &&
-        ((c->arc_address>>16)&15u)==3u && c->selector_mask &&
-        !(c->selector_mask&0xffff0000u) && c->timeout_us && c->timeout_us<=1000000u;
+    if(!c || (c->abi!=GGRSC_ABI && c->abi!=GGRSC_LEGACY_ABI) ||
+       (c->version!=GGRSC_V27 && c->version!=GGRSC_V30) ||
+       !c->epoch || c->reserved || c->tcs_id>=3u || c->mapped_bytes!=0xf300u ||
+       !c->arc_address || (c->arc_address&0xfff00003u) ||
+       ((c->arc_address>>16)&15u)!=3u || !c->selector_mask ||
+       (c->selector_mask&0xffff0000u) || !c->timeout_us || c->timeout_us>1000000u)
+        return 0;
+    if(c->abi==GGRSC_LEGACY_ABI)return 1;
+    if(!c->second_arc_address && !c->second_selector_mask)return 1;
+    return c->second_arc_address && c->second_arc_address!=c->arc_address &&
+        !(c->second_arc_address&0xfff00003u) && ((c->second_arc_address>>16)&15u)==3u &&
+        c->second_selector_mask && !(c->second_selector_mask&0xffff0000u);
 }
 static int nativeRscMetadata()
 {
@@ -185,13 +193,22 @@ static IOService *nativeRscDetach()
 extern "C" __attribute__((used)) int giulia_gpu_rsc_native_open(void *source,
     const struct ggrsc_config *config,const struct ggrn_authority *a)
 {
-    if(!source || !nativeRscConfig(config) || !a || a->abi!=GGRN_ABI || a->bytes!=sizeof(*a) ||
+    if(!source || !nativeRscConfig(config) || !a || (a->abi!=GGRN_ABI && a->abi!=GGRN_LEGACY_ABI) || a->bytes!=sizeof(*a) ||
        !a->cookie || !a->take || !a->live || !a->approve || !a->settled || !a->drop)return GGRN_ARGUMENT;
+    if(a->abi==GGRN_LEGACY_ABI && config->abi==GGRSC_ABI && config->second_arc_address)
+        return GGRN_ARGUMENT;
     IOLock *lock=__atomic_load_n(&nativeRsc.lock,__ATOMIC_ACQUIRE);if(!lock)return GGRN_UNAVAILABLE;
     IOLockLock(lock);
     if(nativeRsc.used){IOLockUnlock(lock);return GGRN_USED;}
     nativeRsc.used=1;nativeRsc.authority=*a;
-    nativeRsc.scope={0x17a20000,0x10000,2,0xd00,37,7,0,*config};
+    nativeRsc.scope={0x17a20000,0x10000,2,0xd00,37,7,0,
+        {config->abi,config->version,config->mapped_bytes,config->tcs_id,
+         config->arc_address,config->selector_mask,config->timeout_us,config->reserved,
+         config->epoch,0,0},0};
+    if(config->abi==GGRSC_ABI) {
+        nativeRsc.scope.transport.second_arc_address=config->second_arc_address;
+        nativeRsc.scope.transport.second_selector_mask=config->second_selector_mask;
+    }
     const uint64_t epoch=nativeRsc.scope.transport.epoch;
     ((IOService *)source)->retain();
     __atomic_store_n(&nativeRsc.source,(IOService *)source,__ATOMIC_RELEASE);
@@ -241,7 +258,7 @@ extern "C" __attribute__((used)) int giulia_gpu_rsc_native_open(void *source,
     IOLog("GIULIA GPU RSC NATIVE: open code=%d provider_required=1 acceleration=0\n",code);
     IOLockUnlock(lock);if(old)old->release();return code;
 }
-static int nativeRscOperation(void *source,unsigned operation,uint32_t selector,uint64_t *serial)
+static int nativeRscOperation(void *source,unsigned operation,uint32_t address,uint32_t selector,uint64_t *serial)
 {
     IOLock *lock=__atomic_load_n(&nativeRsc.lock,__ATOMIC_ACQUIRE);if(!lock)return GGRN_UNAVAILABLE;
     IOLockLock(lock);
@@ -250,19 +267,26 @@ static int nativeRscOperation(void *source,unsigned operation,uint32_t selector,
     if(nativeRsc.quarantined)code=GGRN_QUARANTINED;
     else if(!nativeRscLive(NULL,nativeRsc.scope.transport.epoch))code=nativeRscPoison();
     else if(operation==0) {
-        if(!(nativeRsc.scope.transport.selector_mask&(1u<<selector)))code=GGRN_ARGUMENT;
+        const struct ggrsc_config *config=&nativeRsc.scope.transport;
+        if(!address)address=config->arc_address;
+        uint32_t mask=0;
+        if(address==config->arc_address)mask=config->selector_mask;
+        else if(address==config->second_arc_address)mask=config->second_selector_mask;
+        if(!(mask&(1u<<selector)))code=GGRN_ARGUMENT;
         else if(nativeRsc.core.inflight)code=GGRN_BUSY;
         else {
+            nativeRsc.scope.request_address=address;
             int approved=nativeRsc.authority.approve(nativeRsc.authority.cookie,
                 &nativeRsc.scope,nativeRsc.grant,selector);
             if(!nativeRscLive(NULL,nativeRsc.scope.transport.epoch))code=nativeRscPoison();
             else if(!approved)code=GGRN_BUSY;
             else if(approved!=1)code=nativeRscPoison();
-            else nativeRsc.last_core=ggrsc_submit(&nativeRsc.core,selector,serial);
+            else nativeRsc.last_core=ggrsc_submit_arc(&nativeRsc.core,address,selector,serial);
         }
     } else if(operation==1)nativeRsc.last_core=ggrsc_poll(&nativeRsc.core,*serial);
     else if(nativeRsc.core.inflight)code=GGRN_BUSY;
     else {
+        nativeRsc.scope.request_address=nativeRsc.core.arc_address;
         int settled=nativeRsc.authority.settled(nativeRsc.authority.cookie,&nativeRsc.scope,
             nativeRsc.grant,nativeRsc.core.completed,nativeRsc.core.selector);
         if(!nativeRscLive(NULL,nativeRsc.scope.transport.epoch))code=nativeRscPoison();
@@ -287,12 +311,19 @@ extern "C" __attribute__((used)) int giulia_gpu_rsc_native_submit(void *s,uint32
     if(!serial)return GGRN_ARGUMENT;
     *serial=0;
     if(selector>=16)return GGRN_ARGUMENT;
-    return nativeRscOperation(s,0,selector,serial);
+    return nativeRscOperation(s,0,0,selector,serial);
+}
+extern "C" __attribute__((used)) int giulia_gpu_rsc_native_submit_arc(void *s,uint32_t address,uint32_t selector,uint64_t *serial)
+{
+    if(!serial)return GGRN_ARGUMENT;
+    *serial=0;
+    if(!address || selector>=16)return GGRN_ARGUMENT;
+    return nativeRscOperation(s,0,address,selector,serial);
 }
 extern "C" __attribute__((used)) int giulia_gpu_rsc_native_poll(void *s,uint64_t serial)
-{ if(!serial)return GGRN_ARGUMENT;return nativeRscOperation(s,1,0,&serial); }
+{ if(!serial)return GGRN_ARGUMENT;return nativeRscOperation(s,1,0,0,&serial); }
 extern "C" __attribute__((used)) int giulia_gpu_rsc_native_close(void *s)
-{ return nativeRscOperation(s,2,0,NULL); }
+{ return nativeRscOperation(s,2,0,0,NULL); }
 extern "C" __attribute__((used)) int giulia_gpu_rsc_native_invalidate(void *s)
 {
     if(!s || __atomic_load_n(&nativeRsc.source,__ATOMIC_ACQUIRE)!=s)return GGRN_ARGUMENT;
@@ -314,6 +345,7 @@ extern "C" __attribute__((used)) int giulia_gpu_rsc_native_status(struct ggrn_st
         __atomic_load_n(&nativeRsc.lifecycle,__ATOMIC_ACQUIRE)==1;
     out->revoked=__atomic_load_n(&nativeRsc.lifecycle,__ATOMIC_ACQUIRE)==2;
     out->quarantined=nativeRsc.quarantined;out->mapped=nativeRsc.map!=NULL;out->leased=nativeRsc.leased;
+    out->arc_address=nativeRsc.core.arc_address;
     out->selector=nativeRsc.core.selector;out->inflight=nativeRsc.core.inflight;
     out->mutation_attempted=nativeRsc.core.mutation_attempted;out->trigger_attempted=nativeRsc.core.trigger_attempted;
     out->last_code=nativeRsc.last;out->last_transport_code=nativeRsc.last_core;

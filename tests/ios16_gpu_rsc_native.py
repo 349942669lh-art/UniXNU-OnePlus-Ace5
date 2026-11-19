@@ -34,7 +34,7 @@ for name, value in {'DRV_SOLVER_CONFIG': 4, 'DRV_PRNT_CHLD_CONFIG': 12}.items():
 for path in (ROOT / 'ios16').rglob('*'):
     if path.suffix in ('.c', '.cpp', '.h', '.inc') and path.name not in (
             'giulia_gpu_rsc_native.cpp', 'giulia_gpu_rsc_native.h'):
-        assert not re.search(r'\bgiulia_gpu_rsc_native_(initialize|open|submit|poll)\s*\(', path.read_text()), path
+        assert not re.search(r'\bgiulia_gpu_rsc_native_(initialize|open|submit|submit_arc|poll)\s*\(', path.read_text()), path
 flags = ['-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
          '-fno-sanitize-recover=all', '-g']
 with tempfile.TemporaryDirectory(prefix='gpu-rsc-native-') as folder:

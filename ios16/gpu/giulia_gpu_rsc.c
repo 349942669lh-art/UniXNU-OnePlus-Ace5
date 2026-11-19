@@ -90,19 +90,35 @@ __attribute__((used)) int ggrsc_open(struct ggrsc_state *s,const struct ggrsc_co
 {
     if(!s || !c || !io)return GGRSC_ARGUMENT;
     if(s->initialized || s->closed || s->quarantined)return rsc_code(s,GGRSC_USED);
-    if(c->abi!=GGRSC_ABI || (c->version!=GGRSC_V27 && c->version!=GGRSC_V30) ||
+    if((c->abi!=GGRSC_ABI && c->abi!=GGRSC_LEGACY_ABI) || (c->version!=GGRSC_V27 && c->version!=GGRSC_V30) ||
        c->tcs_id>=32 || !c->epoch || c->reserved ||
        !c->arc_address || (c->arc_address&0xfff00003u) || ((c->arc_address>>16)&15u)!=3 ||
        !c->selector_mask || (c->selector_mask&0xffff0000u) ||
        !c->timeout_us || c->timeout_us>1000000u ||
        !io->live || !io->read32 || !io->write32 || !io->now_us || !io->delay_us)
         return rsc_code(s,GGRSC_ARGUMENT);
+    if(c->abi==GGRSC_ABI && (c->second_arc_address || c->second_selector_mask) &&
+       (!c->second_arc_address || c->second_arc_address==c->arc_address ||
+        (c->second_arc_address&0xfff00003u) || ((c->second_arc_address>>16)&15u)!=3 ||
+        !c->second_selector_mask || (c->second_selector_mask&0xffff0000u)))
+        return rsc_code(s,GGRSC_ARGUMENT);
     /* Last slot reserved in the source-authorized TCS mapping. We touch only
      * slot 0 but reject mappings shorter than a complete legacy TCS block. */
     const uint32_t end=RSC_TCS_STRIDE*(c->tcs_id+1u);
     if((c->mapped_bytes&3u) || c->mapped_bytes<end || c->mapped_bytes>65536u)
         return rsc_code(s,GGRSC_ARGUMENT);
-    s->config=*c;s->io=*io;s->initialized=1;
+    /* Copy the ABI 1 prefix field by field. A binary ABI 1 caller may have
+     * allocated only 40 bytes, so a full ABI 2 structure read is invalid. */
+    s->config.abi=c->abi;s->config.version=c->version;
+    s->config.mapped_bytes=c->mapped_bytes;s->config.tcs_id=c->tcs_id;
+    s->config.arc_address=c->arc_address;s->config.selector_mask=c->selector_mask;
+    s->config.timeout_us=c->timeout_us;s->config.reserved=c->reserved;
+    s->config.epoch=c->epoch;
+    if(c->abi==GGRSC_ABI) {
+        s->config.second_arc_address=c->second_arc_address;
+        s->config.second_selector_mask=c->second_selector_mask;
+    }
+    s->io=*io;s->initialized=1;
     const uint32_t base=RSC_TCS_STRIDE*c->tcs_id;
     const uint32_t shift=c->version==GGRSC_V30 ? 16u : 0u;
     s->wait=base+0x10u+shift;s->control=base+0x14u+shift;
@@ -116,7 +132,7 @@ __attribute__((used)) int ggrsc_open(struct ggrsc_state *s,const struct ggrsc_co
     if(code)return code;
     s->ready=1;return rsc_code(s,GGRSC_OK);
 }
-__attribute__((used)) int ggrsc_submit(struct ggrsc_state *s,uint32_t selector,uint64_t *serial)
+__attribute__((used)) int ggrsc_submit_arc(struct ggrsc_state *s,uint32_t address,uint32_t selector,uint64_t *serial)
 {
     if(!s || !serial)return GGRSC_ARGUMENT;
     /* Output must not alias s. Never erase a retained uncertain serial. */
@@ -124,18 +140,21 @@ __attribute__((used)) int ggrsc_submit(struct ggrsc_state *s,uint32_t selector,u
     if(s->quarantined)return rsc_code(s,GGRSC_QUARANTINED);
     if(!s->initialized || !s->ready || s->closed)return rsc_code(s,GGRSC_ARGUMENT);
     if(s->inflight)return rsc_code(s,GGRSC_BUSY);
-    if(selector>=16 || !(s->config.selector_mask&(1u<<selector)))return rsc_code(s,GGRSC_ARGUMENT);
+    uint32_t mask=0;
+    if(address==s->config.arc_address)mask=s->config.selector_mask;
+    else if(address && address==s->config.second_arc_address)mask=s->config.second_selector_mask;
+    if(selector>=16 || !(mask&(1u<<selector)))return rsc_code(s,GGRSC_ARGUMENT);
     if(s->serial==~(uint64_t)0)return rsc_fault(s,GGRSC_PROTOCOL);
     int code=rsc_clean(s);
     if(code)return code;
     uint64_t now=0;code=rsc_now(s,&now);
     if(code)return code;
-    s->started_us=now;s->polls=0;s->selector=selector;
+    s->started_us=now;s->polls=0;s->selector=selector;s->arc_address=address;
     ++s->serial;*serial=s->serial;s->inflight=1;
     /* Hardware sequence matches the public active TCS protocol, all writes
      * before trigger read back boundedly. No readback of self-changing trigger. */
     const uint32_t offsets[8]={s->control,s->control,s->msg,s->addr,s->data,s->wait,s->enable,s->control};
-    const uint32_t values[8]={0,0,RSC_MESSAGE,s->config.arc_address,selector,1,1,RSC_MODE};
+    const uint32_t values[8]={0,0,RSC_MESSAGE,s->arc_address,selector,1,1,RSC_MODE};
     for(unsigned i=0;i<8;i++) {
         code=rsc_sync(s,offsets[i],values[i]);if(code)return code;
     }
@@ -147,6 +166,10 @@ __attribute__((used)) int ggrsc_submit(struct ggrsc_state *s,uint32_t selector,u
     s->trigger_attempted=1;
     code=rsc_write(s,s->control,RSC_MODE|RSC_TRIGGER);
     return code ? code : rsc_code(s,GGRSC_OK);
+}
+__attribute__((used)) int ggrsc_submit(struct ggrsc_state *s,uint32_t selector,uint64_t *serial)
+{
+    return ggrsc_submit_arc(s,s ? s->config.arc_address : 0,selector,serial);
 }
 __attribute__((used)) int ggrsc_poll(struct ggrsc_state *s,uint64_t serial)
 {
