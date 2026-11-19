@@ -3,6 +3,9 @@
 #define GIULIA_GPU_DEV_H
 #include <stdint.h>
 #include <stddef.h>
+/* CPU-only dispatch policy for the explicit RM diagnostic profile. */
+static inline int ggd_rm_diagnostic_allowed(unsigned operation,unsigned action)
+{ return operation==22 && (action==0 || action==5); }
 enum { GGD_CHUNK=0x400000, GGD_CHUNKS=16, GGD_BYTES=GGD_CHUNK*GGD_CHUNKS,
  GGD_BASE=0x61000000, GGD_CACHE=0x800000, GGD_CACHE_BYTES=0x400000, GGD_MAX=128 };
 struct ggd_allocation { uint32_t offset,bytes,flags,kind; };

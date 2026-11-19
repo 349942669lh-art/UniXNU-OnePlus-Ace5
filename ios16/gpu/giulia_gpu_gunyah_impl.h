@@ -38,6 +38,7 @@ static int gpuGunyahResult(int result)
 }
 int GiuliaGPU::gunyahCommand(uint32_t action,uint32_t b,uint32_t c,uint32_t d)
 {
+    if(rmOnlyTest && action!=0 && action!=5)return 4;
     if(action>5 || d || (action==0 && (b||c)) ||
        ((action==1 || action==3 || action==5) && (!b || b>3000 || c)) ||
        (action==2 && (!b || b>GGRS_MAX_POLL_FRAMES || !c || c>3000)) ||

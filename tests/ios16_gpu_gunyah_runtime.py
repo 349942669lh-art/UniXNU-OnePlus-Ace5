@@ -108,7 +108,7 @@ public:
     IOLock lock;IOLock *runtimeLock=&lock;
     bool workerRunning=false,stopping=false,terminalOwner=false;
     unsigned mode=1,firmwarePowerState=0,observations=0;
-    bool hostOnly=false;
+    bool hostOnly=false,rmOnlyTest=false;
     bool powerOnlyTest=false;
     void powerOnlyStart(){assert(false && "Gunyah fixture must not enter the power-only path");}
     void powerOnlyStop(){assert(false && "Gunyah fixture must not enter the power-only path");}
@@ -319,6 +319,17 @@ static void failures() {
     noReport.bootGunyahCaptured=true;noReport.bootGunyah.crc32^=1;
     assert(noReport.gunyahCommand(1,10,0,0)==7 && !allocs);
 }
+static void rm_profile() {
+    reset();GiuliaGPU s;setup(s);s.rmOnlyTest=true;
+    for(unsigned action:{1u,2u,3u,4u})assert(s.gunyahCommand(action,10,0,0)==4);
+    assert(!allocs && !nativeCalls());
+    assert(s.gunyahCommand(5,1000,0,0)==0 && bootstraps==1);
+    assert(s.gunyahCommand(0,0,0,0)==0);
+    unsigned calls=nativeCalls();
+    for(unsigned action:{1u,2u,3u,4u})assert(s.gunyahCommand(action,10,0,0)==4);
+    assert(nativeCalls()==calls);
+    s.stopGunyah();
+}
 static void periodic() {
     reset();GiuliaGPU s;setup(s);s.gunyahPeriodic();assert(!polls && !statuses);
     assert(s.gunyahCommand(3,17,0,0)==0);s.gunyahPeriodic();assert(!polls);
@@ -375,7 +386,7 @@ static void worker_periodic() {
     assert(!frees && s.references==2 && s.gunyahPinned && s.releaseCalls==1);
 }
 int main() {
-    policy_and_callbacks();commands();failures();periodic();worker_stop();worker_periodic();
+    policy_and_callbacks();commands();failures();rm_profile();periodic();worker_stop();worker_periodic();
     for(const auto &line:logs) {
         assert(line.size()<256 && line.back()=='\n');
         assert(line.find("completion_verified=1")==std::string::npos);

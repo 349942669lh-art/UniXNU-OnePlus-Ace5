@@ -181,9 +181,15 @@ parcel、动态 participant 和显式 mem_info_tag。
 本次启动的 Gunyah、ARC 状态和供电结果请求。打包器核对 UEFI 的匹配 GPU
 供电准备功能不可用。普通 mode 3 的固件准备检查继续执行原有条件。
 
-诊断配置使用已有 mode-3 owning worker。实验步骤为固定 RAM backing、
-单次 action 5 查询和 action 0 状态读取。该打包标记记录实验用途，
-实际资源操作继续受已有 native owner 和 worker 条件控制。
+诊断配置使用 `giulia_gpu_rm_diagnostic=1` 标记和已有 mode-3 owning worker。
+实验步骤为固定 RAM backing、单次 action 5 查询和 action 0 状态读取。
+该标记把 DEV 调度限制为这两个 RM action，保留 CPU 状态、stack 和 RAM pin。
+GPU 观察、HFI pump、GMU、共享和原始 MMIO 调度均在执行前拒绝。
+
+完成 UFS 只读探测后，该明确配置使用现有 SPMI restart reason 与 PSCI
+SYSTEM_RESET 退出至 Fastboot。可写存储、MMIO、power-only、混合或未知配置
+仍由退出检查拒绝。RM 状态与 backing 保留到整机 reset。主机回归测试编译
+实际启动参数判定函数，覆盖 1152 个参数组合。真实退出结果按候选启动验收。
 
 canonical MSGQ 使用 `hvc #0`，固定 function ID 为 `0xc600801b/c`。
 发送和接收均使用私有 scratch buffer，接收仅在成功且租约仍有效时

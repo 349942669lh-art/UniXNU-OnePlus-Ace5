@@ -123,7 +123,7 @@ public:
     bool prepareInitialMappings();int memstoreAllocate(uint32_t,uint32_t,uint32_t,uint32_t);
     int memstoreRead(uint32_t);int auditMemstoreMappings();int auditSecureMappings(){return 0;}
     struct ggd_pool devPool={};bool devUcode[GGD_MAX]={},devMappingsManaged=false;
-    bool platformPrepared=true,platformPoisoned=false;
+    bool platformPrepared=true,platformPoisoned=false,rmOnlyTest=false;
     uint32_t devPacket[255]={};bool devWritten[255]={};
     IOBufferMemoryDescriptor *firmwareMemory=nullptr;
     struct Map {uintptr_t address;uintptr_t getVirtualAddress(){return address;}} packMap={};
@@ -259,6 +259,18 @@ static void command_guards() {
     assert(command(s,5,255,0)==4 && command(s,6,256)==4);
     assert(!command(s,10));assert(command(s,22)==6);
     s.devPool.count=GGD_MAX+1;assert(command(s,8)==8);s.devPool.count=nogpu+1;
+}
+static void rm_dispatch() {
+    GiuliaGPU s;prepare(s,true);s.rmOnlyTest=true;
+    auto saved=s.registers;
+    unsigned count=s.devPool.count;
+    for(unsigned op=0;op<=24;op++) {
+        if(op==22)continue;
+        assert(command(s,op,0,4096,0,0)==4);
+        assert(s.registers==saved && s.devPool.count==count);
+    }
+    for(unsigned action=0;action<=6;action++)
+        assert(command(s,22,action,action==5?10:0,0,0)==((action==0 || action==5)?6:4));
 }
 static void quarantine(GiuliaGPU &s,uint32_t at) {
     auto saved=bytes(s,at,12288);auto count=s.devPool.count;
@@ -530,7 +542,7 @@ int main(int argc,char **argv) {
     fixturePack={std::istreambuf_iterator<char>(file),std::istreambuf_iterator<char>()};
     assert(gg_pack_open(fixturePack.data(),fixturePack.size(),&decoded));
     seal(false,GG_ASSET_SQE,false);seal(true,GG_ASSET_SQE,true);seal(true,GG_ASSET_AQE,false,true);
-    command_guards();failures();memstore();ipc();fence();assert(allocated==freed);
+    command_guards();rm_dispatch();failures();memstore();ipc();fence();assert(allocated==freed);
     puts("Actual GPU devCommand: RAM/UCODE, memstore, IPC exclusion, registered fence import/live epochs, paired provider ownership, publication/TLBI failure retention and quarantine passed (synthetic provider; no controller)");
 }
 '''

@@ -96,7 +96,7 @@ public:
     IOBufferMemoryDescriptor *memstoreMemory=nullptr;
     uint32_t memstoreFlags=0;bool memstoreMapped=false;
     uint64_t gmuRoot=0,gpuRoot=0;
-    struct ggd_pool devPool={};bool manualMemoryPinned=true;
+    struct ggd_pool devPool={};bool manualMemoryPinned=true,rmOnlyTest=false;
     bool devMappingsManaged=false,devUcode[GGD_MAX]={},platformPoisoned=false,fenceMapped=false;
     int auditFenceMappings(){return 6;}
     // This allocation fixture never authorizes or invokes a Gunyah operation.

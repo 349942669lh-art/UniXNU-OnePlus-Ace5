@@ -57,6 +57,10 @@ static int gm_command(const char *cmd)
     /* Enforce isolation even if GPU matching fails or giulia_mmio=1 was
      * inherited from a debug profile. No raw alias may race the native worker. */
     int power_test=0;PE_parse_boot_argn("giulia_gpu_power_test",&power_test,sizeof(power_test));
+    int rm_test=0;PE_parse_boot_argn("giulia_gpu_rm_diagnostic",&rm_test,sizeof(rm_test));
+    if(rm_test) {
+        printf("GIULIA REG: disabled during RM diagnostic\n");return 1;
+    }
     if(power_test) {
         printf("GIULIA REG: disabled during GPU power-only test\n");return 1;
     }

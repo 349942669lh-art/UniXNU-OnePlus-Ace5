@@ -28,6 +28,14 @@ static inline int grb_readonly_probe_allowed(unsigned completed,int probe,int wr
     return completed==1 && probe==1 && writable==0 && gpu_mode==1 &&
         host_only==1 && mmio==0 && power_test==0;
 }
+/* RM diagnostics retain their native channel until the whole-SoC reset.
+ * This explicit rootless profile excludes GPU and raw-MMIO dispatch. */
+static inline int grb_readonly_rm_probe_allowed(unsigned completed,int probe,int writable,
+    int gpu_mode,int host_only,int mmio,int power_test,int rm_diagnostic)
+{
+    return completed==1 && probe==1 && writable==0 && gpu_mode==3 &&
+        host_only==0 && mmio==0 && power_test==0 && rm_diagnostic==1;
+}
 static inline int grb_owned(const struct grb_io *b,const struct grb_state *s)
 {
     return b->read(b->context,GRB_CORE,0x2000+4*s->apid)==s->mapping &&

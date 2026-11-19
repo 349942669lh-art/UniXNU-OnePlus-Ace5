@@ -52,16 +52,18 @@ void giulia_reboot_read_probe_complete(void)
 }
 static int gr_readonly_probe(void)
 {
-    int probe=0,writable=0,mode=0,host_only=0,mmio=0,power_test=0;
+    int probe=0,writable=0,mode=0,host_only=0,mmio=0,power_test=0,rm_diagnostic=0;
     PE_parse_boot_argn("giulia_ufs_probe",&probe,sizeof(probe));
     PE_parse_boot_argn("vermeer_ufs_rw",&writable,sizeof(writable));
     PE_parse_boot_argn("giulia_gpu",&mode,sizeof(mode));
     PE_parse_boot_argn("giulia_gpu_hostonly",&host_only,sizeof(host_only));
     PE_parse_boot_argn("giulia_mmio",&mmio,sizeof(mmio));
     PE_parse_boot_argn("giulia_gpu_power_test",&power_test,sizeof(power_test));
-    return grb_readonly_probe_allowed(
-        __atomic_load_n(&gr_runtime.read_probe_complete,__ATOMIC_ACQUIRE),
-        probe,writable,mode,host_only,mmio,power_test);
+    PE_parse_boot_argn("giulia_gpu_rm_diagnostic",&rm_diagnostic,sizeof(rm_diagnostic));
+    unsigned completed=__atomic_load_n(&gr_runtime.read_probe_complete,__ATOMIC_ACQUIRE);
+    if(rm_diagnostic)return grb_readonly_rm_probe_allowed(completed,probe,writable,
+        mode,host_only,mmio,power_test,rm_diagnostic);
+    return grb_readonly_probe_allowed(completed,probe,writable,mode,host_only,mmio,power_test);
 }
 static int gr_reset(const char *disks)
 {

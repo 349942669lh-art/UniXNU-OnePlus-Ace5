@@ -130,6 +130,7 @@ for name in prepare consumer; do
     "$tmp/power-$name"
 done
 python3 tests/ios16_gpu_power_handoff.py
+python3 tests/ios16_reboot_profile.py
 python3 tests/ios16_gpu_boot_state.py
 python3 tests/ios16_gpu_qmp_transport.py
 vendor=ios16/vendor/ArmSmmu4K

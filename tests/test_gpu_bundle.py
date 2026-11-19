@@ -280,7 +280,7 @@ if report.get('gpu_mode')==3:
                  b"'IONameMatch' = 'arm,armv8'; }\0"
                  b'IOMobileFramebufferUserClient\0IOCoreSurfaceRoot\0SWEET HID: touch registered\0'
                  b'GIULIA SHELL: /dev/giulia-debug ready;\0giulia_gpu_hostonly\0'
-                 b'GIULIA GPU GUNYAH: self_attempted=\0')
+                 b'GIULIA GPU GUNYAH: self_attempted=\0giulia_gpu_rm_diagnostic\0')
         at = len(kernel) - 0x1000
         self.assertFalse(any(kernel[at:at + len(extra)]))
         kernel[at:at + len(extra)] = extra
@@ -326,6 +326,7 @@ if report.get('gpu_mode')==3:
                 self.assertTrue(report[flag])
                 self.assertNotIn('root_finder_id',report)
                 self.assertIn('giulia_gpu=3' if rm_diagnostic else 'giulia_gpu=1 giulia_gpu_hostonly=1',report['kernel_args'])
+                if rm_diagnostic:self.assertIn('giulia_gpu_rm_diagnostic=1',report['kernel_args'])
                 self.assertNotIn('vermeer_ufs_rw=1',report['kernel_args'])
                 verify=[sys.executable,str(actual_repo/'scripts/verify-payload.py'),str(output)]
                 result=subprocess.run(verify,capture_output=True,text=True)

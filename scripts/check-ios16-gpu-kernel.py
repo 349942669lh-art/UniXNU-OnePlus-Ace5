@@ -12,6 +12,7 @@ MARKERS = (
     b'GiuliaGPU',
     b'GIULIA GPU: boot Gunyah resources',
     b'GIULIA GPU BOOT: valid=',
+    b'GIULIA GPU RM: rejected_requests=',
     b'GIULIA GPU DEV: gunyah_owner_abi=1 current_boot_resources=1 guarded_hvc=1 fence_completion=0',
     b'cpu_cache=normal-copyback',
     b'GIULIA GPU: host RAM cache publication complete;',

@@ -143,7 +143,7 @@ public:
     IOLock *runtimeLock=&lock;
     bool workerRunning=true,stopping=false,terminalOwner=true;
     unsigned mode=1,reservationCount=5,tablePages=6,leafPages=104,observations=0;
-    bool hostOnly=false;
+    bool hostOnly=false,rmOnlyTest=false;
     bool powerOnlyTest=false,powerOnlyAttached=false;unsigned powerOnlyCode=GGPO_UNAVAILABLE;
     void powerOnlyStart();void powerOnlyStop();void powerOnlyReport();
     std::atomic<unsigned> devCalls{0},periodicCalls{0},gmuCalls{0};
@@ -452,6 +452,17 @@ int main() {
     assert(powerStarts==1 && powerStops==0 && powerTest.powerOnlyCode==GGPO_UNAVAILABLE);
     assert(!powerTest.entered && !powerTest.devCalls && !powerTest.gmuCalls && !powerTest.periodicCalls);
     assert(!powerTest.hfiPump.received && !powerTest.manualMemoryPinned);
+    GiuliaGPU rmTest;rmTest.mode=3;rmTest.rmOnlyTest=true;
+    rmTest.allowObservation=true;rmTest.firmwarePowerState=GGPH_PREPARED;
+    assert(gg_terminal_open(&gpuTerminal));before=statuses.load();
+    for(unsigned bit=1;bit<=GGT_SHARE;bit<<=1)
+        if(bit&GGT_COMMANDS)assert(gg_terminal_request(&gpuTerminal,bit));
+    devArgs[0]=789;devArgs[1]=3;__atomic_store_n(&devState,2u,__ATOMIC_RELEASE);
+    std::thread rmWorker(GiuliaGPU::worker,&rmTest,0);
+    until([&]{return statuses.load()>before;});rmTest.stop(nullptr);rmWorker.join();
+    assert(!rmTest.entered && !rmTest.observations && !rmTest.devCalls && !rmTest.gmuCalls);
+    assert(!rmTest.periodicCalls && !rmTest.hfiPump.received && rmTest.manualMemoryPinned);
+    assert(!rmTest.hfiSequence && !rmTest.shareRuntime.prepared && !rmTest.released);
     /* Uncertain native power cannot let stop free memory behind the source. */
     workerPowerStatus.registered=workerPowerStatus.grant_held=workerPowerStatus.quarantined=1;
     powerStartCode=GGPO_QUARANTINED;

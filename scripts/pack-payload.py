@@ -68,6 +68,7 @@ def main():
     require(type(rm_diagnostic) is bool, 'Invalid RM diagnostic metadata')
     if rm_diagnostic:
         require(pr.get('gpu_mode')==3 and pr.get('debug_terminal_enabled') is True and
+                'giulia_gpu_rm_diagnostic=1' in pr.get('kernel_args','').split() and
                 not pr.get('root_finder_id') and not pr.get('gpu_hostonly') and
                 not pr.get('debug_mmio_enabled') and pr.get('gpu_power_handoff') and
                 pr.get('gpu_gunyah_handoff') and pr.get('gpu_boot_state_handoff') and

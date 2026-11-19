@@ -66,7 +66,8 @@ def main():
     platform_match=check_platform(a.adt.read_bytes(),a.kernel.read_bytes())
     if a.gpu_hostonly and b'giulia_gpu_hostonly\0' not in a.kernel.read_bytes():
         raise ValueError('Kernel lacks the GPU host-only boot policy')
-    if a.gpu_rm_diagnostic and b'GIULIA GPU GUNYAH: self_attempted=' not in a.kernel.read_bytes():
+    if a.gpu_rm_diagnostic and (b'GIULIA GPU GUNYAH: self_attempted=' not in a.kernel.read_bytes() or
+                                b'giulia_gpu_rm_diagnostic\0' not in a.kernel.read_bytes()):
         raise ValueError('Kernel lacks the independent native RM identity query')
     if a.enable_slider and (not a.root_report or not platform_match.get('gui') or
                             b'GIULIA SLIDER: handoff-missing gh=' not in a.kernel.read_bytes()):
@@ -122,7 +123,7 @@ def main():
             raise ValueError('Kernel lacks the Wi-Fi terminal start gate')
         args+=' giulia_wifi_wait=1'
     if a.gpu_hostonly:args+=' giulia_gpu=1 giulia_gpu_hostonly=1'
-    if a.gpu_rm_diagnostic:args+=' giulia_gpu=3'
+    if a.gpu_rm_diagnostic:args+=' giulia_gpu=3 giulia_gpu_rm_diagnostic=1'
     probe=args+' giulia_ufs_probe=1'
     config=('version = 1\n[boot]\ntimeout = 3\ndefault = "xnu"\n[kits]\nautoload = false\n'
             '[[entry]]\nid = "xnu"\ntitle = "Ace 5 iOS16 UFS + USB"\ntype = "xnu"\n'

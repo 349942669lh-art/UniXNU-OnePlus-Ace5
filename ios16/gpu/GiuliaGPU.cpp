@@ -199,7 +199,7 @@ class GiuliaGPU : public IOService {
     bool hostOnly;
     /* Explicit power-only worker. No legacy MMIO/dev/HFI/Gunyah dispatch is
      * allowed in this mode, even when the native provider refuses or fails. */
-    bool powerOnlyTest,powerOnlyAttached;
+    bool powerOnlyTest,powerOnlyAttached,rmOnlyTest;
     unsigned powerOnlyCode;
     void powerOnlyStart();
     void powerOnlyStop();
@@ -320,7 +320,7 @@ void GiuliaGPU::releaseSecureMetadata()
 bool GiuliaGPU::init(OSDictionary *dictionary)
 {
     hostOnly=false;
-    powerOnlyTest=powerOnlyAttached=false;powerOnlyCode=GGPO_UNAVAILABLE;
+    powerOnlyTest=powerOnlyAttached=rmOnlyTest=false;powerOnlyCode=GGPO_UNAVAILABLE;
     firmwareMemory=NULL; firmwareMap=NULL; tableMemory=NULL;
     gpuTableMemory=NULL;gmuRoot=gpuRoot=0;
     memstoreMemory=NULL;memstoreFlags=0;memstoreMapped=false;
@@ -649,6 +649,10 @@ bool GiuliaGPU::start(IOService *provider)
     PE_parse_boot_argn("giulia_debug",&debug,sizeof(debug));
     if(powerTest && (powerTest!=1 || requested!=3 || hostOnly || debug!=1))return false;
     powerOnlyTest=powerTest==1;
+    int rmDiagnostic=0;
+    PE_parse_boot_argn("giulia_gpu_rm_diagnostic",&rmDiagnostic,sizeof(rmDiagnostic));
+    if(rmDiagnostic && (rmDiagnostic!=1 || requested!=3 || hostOnly || powerOnlyTest || debug!=1))return false;
+    rmOnlyTest=rmDiagnostic==1;
     IORegistryEntry *root=IORegistryEntry::fromPath("/",gIODTPlane);
     if (!root) return false;
     OSData *model=OSDynamicCast(OSData,root->getProperty("physical-model"));
@@ -828,7 +832,8 @@ void GiuliaGPU::reportStatus()
 static void gpuHfiBarrier(void *) { __asm__ volatile("dsb sy" ::: "memory"); }
 void GiuliaGPU::hfiCommand(unsigned requests)
 {
-    if(!hostPrepared || mode!=3)return;
+    if(rmOnlyTest)requests&=GGT_HFI_PIN;
+    if(!hostPrepared || mode!=3 || !requests)return;
     if(platformPoisoned || (fenceMapped && auditFenceMappings())) {
         IOLog("GIULIA GPU HFI: rejected reason=platform-quarantined\n");return;
     }
@@ -902,17 +907,24 @@ void GiuliaGPU::worker(void *cookie,wait_result_t)
     if(!self->stopping) {
         __atomic_store_n(&gpuTerminal.stage,(unsigned)GGT_READY,__ATOMIC_RELEASE);
         if(self->powerOnlyTest)self->powerOnlyStart();
-        else if(!self->hostOnly && (self->mode==2 || (self->mode==3 && self->firmwarePowerState==GGPH_PREPARED)))self->observePower();
+        else if(!self->hostOnly && !self->rmOnlyTest && (self->mode==2 || (self->mode==3 && self->firmwarePowerState==GGPH_PREPARED)))self->observePower();
     }
     while(!self->stopping) {
         if(__atomic_load_n(&devState,__ATOMIC_ACQUIRE)==2) {
             uint32_t args[6];memcpy(args,devArgs,sizeof(args));
             if(self->hostOnly || self->powerOnlyTest)
                 IOLog("GIULIA GPU: hostonly=%u power_only=%u rejected_dev_token=%u device_dispatch=0\n",self->hostOnly,self->powerOnlyTest,args[0]);
+            else if(self->rmOnlyTest && !ggd_rm_diagnostic_allowed(args[1],args[2]))
+                IOLog("GIULIA GPU RM: rejected_dev_token=%u device_dispatch=0\n",args[0]);
             else self->devCommand(args);
             __atomic_store_n(&devState,0u,__ATOMIC_RELEASE);
         }
         unsigned requests=gg_terminal_take(&gpuTerminal);
+        if(self->rmOnlyTest) {
+            unsigned rejected=requests&~(GGT_STATUS|GGT_STACK|GGT_HFI_PIN);
+            if(rejected)IOLog("GIULIA GPU RM: rejected_requests=%#x\n",rejected);
+            requests&=GGT_STATUS|GGT_STACK|GGT_HFI_PIN;
+        }
         if(self->hostOnly || self->powerOnlyTest) {
             unsigned rejected=requests&~(GGT_STATUS|GGT_STACK);
             if(rejected)IOLog("GIULIA GPU: hostonly=%u power_only=%u rejected_requests=%#x device_dispatch=0\n",self->hostOnly,self->powerOnlyTest,rejected);
@@ -931,10 +943,10 @@ void GiuliaGPU::worker(void *cookie,wait_result_t)
                 self->observations,self->powerObservation.stage,self->powerObservation.valid_fields);
         }
         if(requests&(GGT_STATUS|GGT_OBSERVE))self->reportStatus();
-        if(!self->hostOnly && !self->powerOnlyTest)self->gunyahPeriodic();
+        if(!self->hostOnly && !self->powerOnlyTest && !self->rmOnlyTest)self->gunyahPeriodic();
         /* Answer firmware memory requests only while pinned and healthy. The
          * pump is bounded and never retries a refused or unsent reply. */
-        if(!self->hostOnly && !self->powerOnlyTest)self->hfiPumpOnce(2);
+        if(!self->hostOnly && !self->powerOnlyTest && !self->rmOnlyTest)self->hfiPumpOnce(2);
         IOLockUnlock(self->runtimeLock);IOSleep(25);IOLockLock(self->runtimeLock);
     }
     if(self->powerOnlyTest)self->powerOnlyStop();

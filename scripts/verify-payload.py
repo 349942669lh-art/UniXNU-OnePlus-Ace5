@@ -78,7 +78,8 @@ with tempfile.TemporaryDirectory() as directory:
             report.get('debug_mmio_enabled') or report.get('root_finder_id') or
             report.get('gpu_hostonly'))):
         raise SystemExit('Invalid rootless RM diagnostic configuration')
-    if gpu_rm_diagnostic and b'GIULIA GPU GUNYAH: self_attempted=' not in (temporary/'kernel.macho').read_bytes():
+    if gpu_rm_diagnostic and (b'GIULIA GPU GUNYAH: self_attempted=' not in (temporary/'kernel.macho').read_bytes() or
+                              b'giulia_gpu_rm_diagnostic\0' not in (temporary/'kernel.macho').read_bytes()):
         raise SystemExit('RM diagnostic kernel lacks the native self-identity query')
     gpu_hostonly=report.get('gpu_hostonly',False)
     if type(gpu_hostonly) is not bool or (gpu_hostonly and report.get('gpu_mode')!=1):
@@ -117,7 +118,7 @@ with tempfile.TemporaryDirectory() as directory:
         print('Embedded ADT matches the built-in platform and CPU drivers')
     config=tomllib.loads((temporary/'unixnu.toml').read_text())
     debug_args=report['kernel_args'].split()
-    if gpu_rm_diagnostic and ('giulia_gpu=3' not in debug_args or 'giulia_ufs_probe=1' not in debug_args or
+    if gpu_rm_diagnostic and ('giulia_gpu=3' not in debug_args or 'giulia_gpu_rm_diagnostic=1' not in debug_args or 'giulia_ufs_probe=1' not in debug_args or
                               'vermeer_ufs_rw=1' in debug_args or 'giulia_mmio=1' in debug_args):
         raise SystemExit('RM diagnostic boot arguments differ from the verified configuration')
     if gpu_hostonly != ('giulia_gpu_hostonly=1' in debug_args):

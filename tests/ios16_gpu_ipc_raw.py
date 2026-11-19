@@ -20,7 +20,7 @@ typedef size_t vm_size_t;
 #define PAGE_SIZE 16384
 #define VM_WIMG_IO 0
 static unsigned mapped,unmapped;
-static int power_test;
+static int power_test,rm_test;
 static unsigned long gPhysBase=0x880000000ull,gPhysSize=0x100000000ull;
 static char reply[1024];
 static int terminal_printf(const char *format,...) {
@@ -31,6 +31,7 @@ static int gs_enabled(void){return 1;}
 static void PE_parse_boot_argn(const char *name,int *value,size_t n) {
     assert(n==sizeof(*value));
     if(!strcmp(name,"giulia_mmio"))*value=1;
+    else if(!strcmp(name,"giulia_gpu_rm_diagnostic"))*value=rm_test;
     else {assert(!strcmp(name,"giulia_gpu_power_test"));*value=power_test;}
 }
 vm_offset_t ml_io_map_unmappable(vm_offset_t pa,vm_size_t bytes,uint32_t attr) {
@@ -70,6 +71,15 @@ int main(void) {
         }
     }
     power_test=0;
+    for(int flag=-1;flag<=2;flag++)if(flag) {
+        rm_test=flag;
+        for(unsigned i=0;i<sizeof(isolated)/sizeof(isolated[0]);i++) {
+            assert(gm_command(isolated[i]) && strstr(reply,"disabled during RM diagnostic"));
+            assert(gm_maps[0].virtual==original && *(uint32_t *)original==0xabc);
+            assert(mapped==before && unmapped+1==mapped);
+        }
+    }
+    rm_test=0;
     assert(gm_command("reg.unmap 0"));assert(mapped==unmapped);
     puts("Raw MMIO: power-only flag blocks every register command before map/read/write, including an existing RAM alias");
     puts("Raw MMIO: reserved IPC_CORE aliases rejected in GPU profile; other windows and standalone profile preserved");

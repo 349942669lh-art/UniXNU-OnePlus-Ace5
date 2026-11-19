@@ -80,7 +80,8 @@ void GiuliaGPU::devAllocation(unsigned n)
 void GiuliaGPU::devCommand(const uint32_t *v)
 {
     unsigned token=v[0],op=v[1];uint32_t a=v[2],b=v[3],c=v[4],d=v[5];int code=0;
-    if(!hostPrepared)code=1;
+    if(rmOnlyTest && !ggd_rm_diagnostic_allowed(op,a))code=4;
+    else if(!hostPrepared)code=1;
     else if(op!=0 && !(op==22 && a==0) && !manualMemoryPinned)code=2;
     /* Reads remain available for diagnosis. No CPU/HFI mutation may escape
      * quarantine after a mapping, publication, or TLB synchronization failure. */
