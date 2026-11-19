@@ -121,6 +121,7 @@ def main():
                       'local_gcc_axi_memnoc_dvm_implemented': True,
                       'local_cx_gdsc_implemented': True,
                       'cfg_prepared_by_composition': False,
+                      'explicit_hub_aon_and_cx_int_bindings_tested': True,
                       'upstream_voltage_parent_bandwidth_implemented': False,
                       'production_binding_present': False,
                       'native_xnu_header_abi_verified': False, 'full_xnu_link_performed': False,

@@ -135,7 +135,7 @@ static const struct ggpo_scope scope={
     {{0x03d00000,0x40000},{0x03d68000,0x37000},{0x03d40000,0x10000},
      {0x03d90000,0x9800},{0x03da0000,0x40000},{0x00171000,0x1000}},
      0x23,{332,336,337},GGPO_PREREQUISITES,0};
-static void init(struct mock *m)
+static void init_hub(struct mock *m,unsigned hub_branch)
 {
     memset(m,0,sizeof(*m));m->valid=1;m->ready=m->quiet=1;
     for(unsigned n=0;n<sizeof(pll_init)/sizeof(pll_init[0]);n++)m->reg[pll_init[n][0]/4]=pll_init[n][1];
@@ -146,10 +146,12 @@ static void init(struct mock *m)
     const struct gg_power_ops power={m,resolve,quiet,acquire,release,observe,wait_us,trace};
     const struct ggpo_source up={GGPO_ABI,sizeof(up),m,take,live,drop,power};
     const struct ggbs_io io={m,rcg_ready,root_quiet,pll_ready,parked,branch_ready,branch_quiet,read32,write32,
-        gcc_ready,gcc_read,gcc_write,cx_ready};
+        gcc_ready,gcc_read,gcc_write,cx_ready,hub_branch};
     CHECK(ggbs_init(&m->s,&up,&io)==GGBS_OK && !m->events);
     CHECK(ggbs_export(&m->s,&m->exposed)==GGBS_OK && !m->events);
 }
+static void init(struct mock *m)
+{ init_hub(m,0); }
 static int boot(struct mock *m)
 {
     int e=m->exposed.take(m->exposed.cookie,17,&scope,&m->grant);
@@ -170,28 +172,44 @@ int main(void)
 {
     struct mock *m=calloc(1,sizeof(*m));CHECK(m);
     CHECK(!strcmp(ggbs_identity(),GGBS_IDENTITY));
-    init(m);CHECK(boot(m)==GGC_OK);
-    CHECK(m->s.held_mask==((1u<<GGR_COUNT)-1u) && m->power.ready && m->s.retained);
-    CHECK(!m->acquires && !m->delegated_mask && m->s.cx.enabled);
-    CHECK((m->reg[GGCX_CONTROL/4]&0xf807u)==0x8800u);
-    CHECK(m->s.gcc.requested_mask==((1u<<GGGC_AXI)|(1u<<GGGC_MEMNOC)|(1u<<GGGC_DVM)));
-    CHECK(!(m->s.gcc.requested_mask&(1u<<GGGC_CFG)) && !m->gcc[4/4]);
-    CHECK(m->s.pll.applied.requested_hz==1250000000u && m->s.rcg.hz[0]==625000000u && m->s.rcg.hz[1]==200000000u);
-    CHECK(m->s.branches.requested_mask==((1u<<GGCB_GMU)|(1u<<GGCB_CXO)|(1u<<GGCB_AHB)|(1u<<GGCB_HUB_AON)|(1u<<GGCB_SMMU)));
-    unsigned events=m->events,lives=m->lives,reads=m->reads,writes=m->writes;
-    struct ggbs_status status;CHECK(ggbs_status(&m->s,&status)==GGBS_OK);
-    CHECK(m->events==events && status.retained && status.active && !status.quarantined);
-    uint64_t token=99;CHECK(m->exposed.power.acquire(m->exposed.power.cookie,GGR_GMU_RATE,625000000,&token)==GGRC_UNCHANGED_ERROR && !token);
-    CHECK(gg_power_release(&m->exposed.power,&m->power)!=GGC_OK);
-    CHECK(!m->releases && !m->drops && m->reads==reads && m->writes==writes && m->power.held==((1u<<GGR_COUNT)-1u));sealed(m);
-    for(unsigned at=1;at<=events;at++) {
-        init(m);m->fail_at=at;CHECK(boot(m)!=GGC_OK);
-        if(m->s.quarantined || m->s.lost)sealed(m);
-        CHECK(m->events==at && (m->writes!=0)==(m->s.writes!=0));
+    const unsigned bindings[]={0,GGCB_HUB_AON,GGCB_HUB_CX_INT};
+    for(unsigned binding=0;binding<sizeof(bindings)/sizeof(bindings[0]);binding++) {
+        const unsigned hub=bindings[binding]?bindings[binding]:GGCB_HUB_AON;
+        init_hub(m,bindings[binding]);CHECK(boot(m)==GGC_OK);
+        CHECK((m->reg[(hub==GGCB_HUB_CX_INT?0x9148:0x93e8)/4]&1u)==1u);
+        CHECK(m->reg[(hub==GGCB_HUB_CX_INT?0x93e8:0x9148)/4]==0x80000000u);
+        CHECK(m->s.held_mask==((1u<<GGR_COUNT)-1u) && m->power.ready && m->s.retained);
+        CHECK(!m->acquires && !m->delegated_mask && m->s.cx.enabled);
+        CHECK((m->reg[GGCX_CONTROL/4]&0xf807u)==0x8800u);
+        CHECK(m->s.gcc.requested_mask==((1u<<GGGC_AXI)|(1u<<GGGC_MEMNOC)|(1u<<GGGC_DVM)));
+        CHECK(!(m->s.gcc.requested_mask&(1u<<GGGC_CFG)) && !m->gcc[4/4]);
+        CHECK(m->s.pll.applied.requested_hz==1250000000u && m->s.rcg.hz[0]==625000000u && m->s.rcg.hz[1]==200000000u);
+        CHECK(m->s.branches.requested_mask==((1u<<GGCB_GMU)|(1u<<GGCB_CXO)|(1u<<GGCB_AHB)|(1u<<hub)|(1u<<GGCB_SMMU)));
+        unsigned events=m->events,lives=m->lives,reads=m->reads,writes=m->writes;
+        struct ggbs_status status;CHECK(ggbs_status(&m->s,&status)==GGBS_OK);
+        CHECK(m->events==events && status.retained && status.active && !status.quarantined);
+        uint64_t token=99;CHECK(m->exposed.power.acquire(m->exposed.power.cookie,GGR_GMU_RATE,625000000,&token)==GGRC_UNCHANGED_ERROR && !token);
+        CHECK(gg_power_release(&m->exposed.power,&m->power)!=GGC_OK);
+        CHECK(!m->releases && !m->drops && m->reads==reads && m->writes==writes && m->power.held==((1u<<GGR_COUNT)-1u));sealed(m);
+        for(unsigned at=1;at<=events;at++) {
+            init_hub(m,bindings[binding]);m->fail_at=at;CHECK(boot(m)!=GGC_OK);
+            if(m->s.quarantined || m->s.lost)sealed(m);
+            CHECK(m->events==at && (m->writes!=0)==(m->s.writes!=0));
+        }
+        for(unsigned at=1;at<=lives;at++) {
+            init_hub(m,bindings[binding]);m->lose_at=at;CHECK(boot(m)!=GGC_OK);sealed(m);
+        }
     }
-    for(unsigned at=1;at<=lives;at++) {
-        init(m);m->lose_at=at;CHECK(boot(m)!=GGC_OK);sealed(m);
-    }
+    uint64_t token=0;
+    init(m);
+    struct ggbs_state rejected={0};
+    struct ggbs_io invalid=m->s.io;
+    invalid.hub_branch=GGCB_GMU;
+    CHECK(ggbs_init(&rejected,&m->s.upstream,&invalid)==GGBS_ARGUMENT);
+    CHECK(!rejected.initialized && !m->events && !m->takes);
+    invalid.hub_branch=GGCB_CLOCKS;
+    CHECK(ggbs_init(&rejected,&m->s.upstream,&invalid)==GGBS_ARGUMENT);
+    CHECK(!rejected.initialized && !m->events);
     init(m);m->deny=1;CHECK(boot(m)!=GGC_OK && !m->s.active && !m->reads && !m->writes);
     init(m);m->deny=m->bad_grant=1;CHECK(boot(m)!=GGC_OK && m->s.quarantined && !m->reads);sealed(m);
     init(m);m->bad_grant=1;CHECK(boot(m)!=GGC_OK && m->s.quarantined && !m->reads);sealed(m);

@@ -65,12 +65,14 @@ static int bs_gcc_write(void *p,uint32_t off,uint32_t v)
     if(result) { (void)bs_poison(s,GGBS_CLOCK);return -1; }
     return 0;
 }
-static int bs_offset(uint32_t off,unsigned write)
+static int bs_offset(const struct ggbs_state *s,uint32_t off,unsigned write)
 {
     switch(off) {
     case 0x1000:case 0x1004:case 0x1010:case 0x1014:
     case 0x9318:case 0x931c:case 0x93ec:case 0x93f0:
-    case 0x911c:case 0x913c:case 0x9144:case 0x93e8:case 0x7000:return 1;
+    case 0x911c:case 0x913c:case 0x9144:case 0x7000:return 1;
+    case 0x93e8:return s->io.hub_branch!=GGCB_HUB_CX_INT;
+    case 0x9148:return s->io.hub_branch==GGCB_HUB_CX_INT;
     case 0x9108:return 1;
     case 0x9168:return !write;
     case 0x1018:case 0x101c:case 0x1020:case 0x1024:case 0x1028:
@@ -81,7 +83,7 @@ static int bs_offset(uint32_t off,unsigned write)
 static int bs_read(void *p,uint32_t off,uint32_t *v)
 {
     struct ggbs_state *s=p;
-    if(!bs_offset(off,0) || !bs_live(s))return -1;
+    if(!bs_offset(s,off,0) || !bs_live(s))return -1;
     ++s->reads;int result=s->io.read32(s->io.cookie,off,v);
     if(!bs_live(s))return -1;
     if(result) { (void)bs_poison(s,GGBS_CLOCK);return -1; }
@@ -90,7 +92,7 @@ static int bs_read(void *p,uint32_t off,uint32_t *v)
 static int bs_write(void *p,uint32_t off,uint32_t v)
 {
     struct ggbs_state *s=p;
-    if(!bs_offset(off,1) || !bs_live(s))return -1;
+    if(!bs_offset(s,off,1) || !bs_live(s))return -1;
     ++s->writes;int result=s->io.write32(s->io.cookie,off,v);
     if(!bs_live(s))return -1;
     if(result) { (void)bs_poison(s,GGBS_CLOCK);return -1; }
@@ -173,11 +175,12 @@ static int bs_quiet(void *p)
     int result=s->upstream.power.quiescent(s->upstream.power.cookie);
     return bs_live(s)?result:-1;
 }
-static unsigned bs_branch(unsigned id)
+static unsigned bs_branch(const struct ggbs_state *s,unsigned id)
 {
     switch(id) {
     case GGR_GMU_CLK:return GGCB_GMU;case GGR_CXO_CLK:return GGCB_CXO;
-    case GGR_AHB_CLK:return GGCB_AHB;case GGR_HUB_CLK:return GGCB_HUB_AON;
+    case GGR_AHB_CLK:return GGCB_AHB;
+    case GGR_HUB_CLK:return s->io.hub_branch?s->io.hub_branch:GGCB_HUB_AON;
     case GGR_SMMU_CLK:return GGCB_SMMU;default:return GGCB_CLOCKS;
     }
 }
@@ -203,7 +206,7 @@ static enum gg_resource_result bs_acquire(void *p,unsigned id,uint32_t value,uin
     s->resource=id;s->attempted_mask|=1u<<id;
     struct ggbs_ticket *t=&s->tickets[id];
     t->serial=++s->serial;t->held=1;s->held_mask|=1u<<id;*out=t->serial;
-    unsigned branch=bs_branch(id),gcc=bs_gcc(id);int code=0;
+    unsigned branch=bs_branch(s,id),gcc=bs_gcc(id);int code=0;
     if(id==GGR_CX || id==GGR_GMU_RATE || id==GGR_HUB_RATE || branch<GGCB_CLOCKS || gcc<GGGC_CLOCKS) {
         t->local=1;s->retained=1; /* BEFORE any possibly partial mutation. */
         if(id==GGR_CX)code=ggcx_enable(&s->cx);
@@ -264,7 +267,9 @@ __attribute__((used)) int ggbs_init(struct ggbs_state *s,const struct ggpo_sourc
        !up->cookie || !up->take || !up->live || !up->drop || !gg_power_ops_valid(&up->power) ||
        !io->cookie || !io->rcg_ready || !io->root_quiet || !io->pll_ready || !io->pll_parked ||
        !io->branch_ready || !io->branch_quiet || !io->read32 || !io->write32 ||
-       !io->gcc_ready || !io->gcc_read32 || !io->gcc_write32 || !io->cx_ready)return GGBS_ARGUMENT;
+       !io->gcc_ready || !io->gcc_read32 || !io->gcc_write32 || !io->cx_ready ||
+       (io->hub_branch && io->hub_branch!=GGCB_HUB_AON &&
+        io->hub_branch!=GGCB_HUB_CX_INT))return GGBS_ARGUMENT;
     if(s->initialized || __atomic_load_n(&s->lost,__ATOMIC_ACQUIRE))return GGBS_USED;
     s->upstream=*up;s->io=*io;s->initialized=1;return GGBS_OK;
 }

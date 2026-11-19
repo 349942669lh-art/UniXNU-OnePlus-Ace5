@@ -41,6 +41,10 @@ struct ggbs_io {
     /* CPU-only CX software-control assignment and retained supply/CFG/ACD
      * proof. Global quiescence is checked through upstream.power.quiescent. */
     int (*cx_ready)(void *);
+    /* Explicit upstream consumer binding. Zero preserves the existing
+     * HUB_AON route. Only GGCB_HUB_AON and GGCB_HUB_CX_INT are accepted.
+     * The two branches have distinct registers and are never aliases. */
+    uint32_t hub_branch;
 };
 struct ggbs_ticket { uint64_t serial,upstream; uint32_t held,local; };
 struct ggbs_state {
