@@ -43,12 +43,16 @@ def main():
     p.add_argument('--touch-gpio',action='store_true',help='Allow GPIO SPI on the observed GPI-only controller')
     p.add_argument('--wifi-pcie',action='store_true',help='Opt-in WCN7850 power/PCIe enumeration in the matching UEFI; a runtime kernel also requires locally embedded firmware')
     p.add_argument('--gpu-mode',type=int,choices=(1,2,3),help='1: host preparation; 2: gated observation; 3: explicit UEFI CX/clock preparation with a fixed ADT report')
+    p.add_argument('--gpu-rm-diagnostic',action='store_true',help='Rootless mode-3 RM identity experiment with debug terminal and firmware GPU preparation unavailable')
     p.add_argument('--gpu-hostonly',action='store_true',help='Restrict GPU mode 1 to host-memory preparation and CPU-only status/stack commands')
     p.add_argument('--audio-prepare',action='store_true',help='Validate local audio pack and start coordinator; does not establish native platform ownership')
     p.add_argument('--modem-mode',choices=('diagnostic','managed'),help='Enable the unified modem service; managed requires native provider and matching cellular root policy')
     a=p.parse_args()
     if a.gpu_hostonly and a.gpu_mode != 1:
         p.error('--gpu-hostonly requires --gpu-mode 1')
+    if a.gpu_rm_diagnostic and (a.gpu_mode != 3 or not a.debug_terminal or
+                                a.root_report or a.gpu_hostonly or a.debug_mmio):
+        p.error('--gpu-rm-diagnostic requires rootless mode 3 with --debug-terminal and raw MMIO disabled')
     if a.trace_launch_services:a.trace_services=True
     if a.trace_all:a.trace_services=True
     if a.default_root and not a.root_report: p.error('Default root requires a root report')
@@ -62,6 +66,8 @@ def main():
     platform_match=check_platform(a.adt.read_bytes(),a.kernel.read_bytes())
     if a.gpu_hostonly and b'giulia_gpu_hostonly\0' not in a.kernel.read_bytes():
         raise ValueError('Kernel lacks the GPU host-only boot policy')
+    if a.gpu_rm_diagnostic and b'GIULIA GPU GUNYAH: self_attempted=' not in a.kernel.read_bytes():
+        raise ValueError('Kernel lacks the independent native RM identity query')
     if a.enable_slider and (not a.root_report or not platform_match.get('gui') or
                             b'GIULIA SLIDER: handoff-missing gh=' not in a.kernel.read_bytes()):
         raise ValueError('Slider requires a GUI root and the compiled guarded AK09970 worker')
@@ -76,8 +82,10 @@ def main():
     gpu_power=check_gpu_power_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
     gpu_boot_state=check_gpu_boot_state_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
     gpu_gunyah=check_gpu_gunyah_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
+    if a.gpu_rm_diagnostic and not (gpu_boot_state and gpu_gunyah and gpu_power):
+        raise ValueError('RM diagnostic requires fresh boot-state, Gunyah and power-result requests')
     if a.gpu_mode and (not gpu_runtime or not platform_match.get('gui') or
-                       (not a.root_report and not a.gpu_hostonly)):
+                       (not a.root_report and not a.gpu_hostonly and not a.gpu_rm_diagnostic)):
         raise ValueError('GPU mode requires a GUI root entry and matching embedded GPU firmware')
     wifi=check_wifi_platform(read_nodes(a.adt.read_bytes()))
     wifi_runtime=check_runtime(a.kernel.read_bytes(),report)
@@ -114,6 +122,7 @@ def main():
             raise ValueError('Kernel lacks the Wi-Fi terminal start gate')
         args+=' giulia_wifi_wait=1'
     if a.gpu_hostonly:args+=' giulia_gpu=1 giulia_gpu_hostonly=1'
+    if a.gpu_rm_diagnostic:args+=' giulia_gpu=3'
     probe=args+' giulia_ufs_probe=1'
     config=('version = 1\n[boot]\ntimeout = 3\ndefault = "xnu"\n[kits]\nautoload = false\n'
             '[[entry]]\nid = "xnu"\ntitle = "Ace 5 iOS16 UFS + USB"\ntype = "xnu"\n'
@@ -219,6 +228,7 @@ def main():
     if a.audio_prepare:result['audio_prepare']=True
     if a.gpu_mode:result['gpu_mode']=a.gpu_mode
     if a.gpu_hostonly:result['gpu_hostonly']=True
+    if a.gpu_rm_diagnostic:result['gpu_rm_diagnostic']=True
     if gpu_power:result['gpu_power_handoff']=gpu_power
     if gpu_boot_state:result['gpu_boot_state_handoff']=gpu_boot_state
     if gpu_gunyah:result['gpu_gunyah_handoff']=gpu_gunyah

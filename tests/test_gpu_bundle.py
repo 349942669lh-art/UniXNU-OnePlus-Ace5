@@ -3,6 +3,7 @@ from pathlib import Path as _ModulePath
 import sys as _module_sys
 _module_sys.path.insert(0, str(_ModulePath(__file__).resolve().parents[1] / "scripts"))
 from ios16_sources import source_path
+import gzip
 import hashlib
 import json
 import os
@@ -278,7 +279,8 @@ if report.get('gpu_mode')==3:
                  b"{ 'IOClass' = SweetCPU; 'IOProviderClass' = IOPlatformDevice; "
                  b"'IONameMatch' = 'arm,armv8'; }\0"
                  b'IOMobileFramebufferUserClient\0IOCoreSurfaceRoot\0SWEET HID: touch registered\0'
-                 b'GIULIA SHELL: /dev/giulia-debug ready;\0giulia_gpu_hostonly\0')
+                 b'GIULIA SHELL: /dev/giulia-debug ready;\0giulia_gpu_hostonly\0'
+                 b'GIULIA GPU GUNYAH: self_attempted=\0')
         at = len(kernel) - 0x1000
         self.assertFalse(any(kernel[at:at + len(extra)]))
         kernel[at:at + len(extra)] = extra
@@ -306,24 +308,75 @@ if report.get('gpu_mode')==3:
                  [node('memory-map')])])
         from ios16_gpu_gunyah import add_request
         tree = self.root / 'rootless.adt'
-        tree.write_bytes(add_request(adt))
-        output = self.root / 'real-rootless-payload'
-        result = subprocess.run([sys.executable, str(actual_repo / 'scripts/make-ios16-payload.py'),
-            '--kernel', str(binary), '--adt', str(tree), '--out', str(output),
-            '--gpu-mode', '1', '--gpu-hostonly', '--debug-terminal'], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        report = json.loads((output / 'payload.json').read_text())
-        self.assertTrue(report['gpu_hostonly'])
-        self.assertNotIn('root_finder_id', report)
-        self.assertIn('giulia_gpu=1 giulia_gpu_hostonly=1', report['kernel_args'])
-        self.assertNotIn('vermeer_ufs_rw=1', report['kernel_args'])
-        verify = [sys.executable, str(actual_repo / 'scripts/verify-payload.py'), str(output)]
-        result = subprocess.run(verify, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        report['gpu_hostonly'] = False
-        (output / 'payload.json').write_text(json.dumps(report))
-        result = subprocess.run(verify, capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
+        from ios16_gpu_boot_state import add_request as add_boot_state
+        from ios16_gpu_power import add_request as add_power
+        for rm_diagnostic in (False, True):
+            with self.subTest(rm_diagnostic=rm_diagnostic):
+                requested=add_request(adt)
+                if rm_diagnostic:requested=add_power(add_boot_state(requested))
+                tree.write_bytes(requested)
+                output=self.root/('real-rootless-rm' if rm_diagnostic else 'real-rootless-hostonly')
+                options=['--gpu-mode','3','--gpu-rm-diagnostic'] if rm_diagnostic else ['--gpu-mode','1','--gpu-hostonly']
+                result=subprocess.run([sys.executable,str(actual_repo/'scripts/make-ios16-payload.py'),
+                    '--kernel',str(binary),'--adt',str(tree),'--out',str(output),
+                    *options,'--debug-terminal'],capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                report=json.loads((output/'payload.json').read_text())
+                flag='gpu_rm_diagnostic' if rm_diagnostic else 'gpu_hostonly'
+                self.assertTrue(report[flag])
+                self.assertNotIn('root_finder_id',report)
+                self.assertIn('giulia_gpu=3' if rm_diagnostic else 'giulia_gpu=1 giulia_gpu_hostonly=1',report['kernel_args'])
+                self.assertNotIn('vermeer_ufs_rw=1',report['kernel_args'])
+                verify=[sys.executable,str(actual_repo/'scripts/verify-payload.py'),str(output)]
+                result=subprocess.run(verify,capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                if rm_diagnostic and shutil.which('dtc') and shutil.which('fdtput'):
+                    self.check_rm_firmware_binding(actual_repo,output)
+                report[flag]=False
+                (output/'payload.json').write_text(json.dumps(report))
+                result=subprocess.run(verify,capture_output=True,text=True)
+                self.assertNotEqual(result.returncode,0)
+
+    def check_rm_firmware_binding(self,actual_repo,output):
+        dtb=self.root/'rm-fixture.dtb'
+        subprocess.run(['dtc','-I','dts','-O','dtb','-o',str(dtb)],
+            input='/dts-v1/; / { chosen {}; };',text=True,check=True,capture_output=True)
+        kernel=gzip.compress(b'RAM-only UEFI fixture',mtime=0)+dtb.read_bytes()
+        header=bytearray(4096)
+        header[:8]=b'ANDROID!'
+        struct.pack_into('<I',header,8,len(kernel))
+        struct.pack_into('<I',header,40,4)
+        firmware=bytes(header)+kernel+bytes(-len(kernel)%4096)
+        firmware_path=self.root/'rm-fixture.img'
+        firmware_path.write_bytes(firmware)
+        report_path=self.root/'rm-firmware.json'
+        firmware_report={'sha256':hashlib.sha256(firmware).hexdigest(),
+            'status':'offline-image-checks-passed','gpu_gunyah_handoff_available':True,
+            'gpu_power_handoff_available':False}
+        command=[sys.executable,str(actual_repo/'scripts/pack-payload.py'),
+            '--firmware',str(firmware_path),'--firmware-report',str(report_path),
+            '--payload',str(output/'payload.img'),'--payload-report',str(output/'payload.json')]
+        report_path.write_text(json.dumps(firmware_report))
+        result=subprocess.run([*command,'--output',str(self.root/'rm-packed.img')],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        firmware_report['gpu_power_handoff_available']=True
+        report_path.write_text(json.dumps(firmware_report))
+        result=subprocess.run([*command,'--output',str(self.root/'rm-refused.img')],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('unavailable firmware GPU preparation',result.stdout+result.stderr)
+        self.assertFalse((self.root/'rm-refused.img').exists())
+
+    def test_rm_diagnostic_refuses_incompatible_entrypoints(self):
+        for options in ([],['--gpu-mode','2','--debug-terminal'],['--gpu-mode','3'],
+                        ['--gpu-mode','3','--debug-terminal','--debug-mmio'],
+                        ['--gpu-mode','3','--debug-terminal','--root-report',self.inputs[1]]):
+            command=[sys.executable,str(ROOT/'scripts/make-ios16-payload.py'),
+                '--kernel',str(self.kernel),'--adt',self.inputs[0],'--out',str(self.output),
+                '--gpu-rm-diagnostic',*options]
+            result=subprocess.run(command,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('--gpu-rm-diagnostic requires rootless mode 3',result.stderr)
+            self.assertFalse(self.output.exists())
 
     def test_stale_kernel_without_cx_definition_fails_before_build(self):
         binary = self.kernel.read_bytes().replace(b'_ggcx_enable\0', b'_ggcx_unlink\0')

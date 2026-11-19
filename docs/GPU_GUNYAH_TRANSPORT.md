@@ -176,6 +176,15 @@ parcel、动态 participant 和显式 mem_info_tag。
 该入口沿用已有 worker、内存固定及启动模式条件。host-only 和 power-only
 入口继续拒绝全部 DEV 调度。状态命令只读取 CPU 缓存结果。
 
+`make-ios16-payload.py --gpu-mode 3 --gpu-rm-diagnostic --debug-terminal`
+支持无根卷的 RM 诊断打包。该配置要求新内核中的独立 self 查询，以及
+本次启动的 Gunyah、ARC 状态和供电结果请求。打包器核对 UEFI 的匹配 GPU
+供电准备功能不可用。普通 mode 3 的固件准备检查继续执行原有条件。
+
+诊断配置使用已有 mode-3 owning worker。实验步骤为固定 RAM backing、
+单次 action 5 查询和 action 0 状态读取。该打包标记记录实验用途，
+实际资源操作继续受已有 native owner 和 worker 条件控制。
+
 canonical MSGQ 使用 `hvc #0`，固定 function ID 为 `0xc600801b/c`。
 发送和接收均使用私有 scratch buffer，接收仅在成功且租约仍有效时
 发布输出，失败保留调用者数据。

@@ -72,12 +72,20 @@ with tempfile.TemporaryDirectory() as directory:
     if report.get('audio_prepare') and (not audio_runtime or not report.get('root_finder_id') or
                                       not report.get('platform_match',{}).get('gui')):
         raise SystemExit('Audio preparation requires the verified GUI root and audio firmware')
+    gpu_rm_diagnostic=report.get('gpu_rm_diagnostic',False)
+    if type(gpu_rm_diagnostic) is not bool or (gpu_rm_diagnostic and (
+            report.get('gpu_mode')!=3 or not report.get('debug_terminal_enabled') or
+            report.get('debug_mmio_enabled') or report.get('root_finder_id') or
+            report.get('gpu_hostonly'))):
+        raise SystemExit('Invalid rootless RM diagnostic configuration')
+    if gpu_rm_diagnostic and b'GIULIA GPU GUNYAH: self_attempted=' not in (temporary/'kernel.macho').read_bytes():
+        raise SystemExit('RM diagnostic kernel lacks the native self-identity query')
     gpu_hostonly=report.get('gpu_hostonly',False)
     if type(gpu_hostonly) is not bool or (gpu_hostonly and report.get('gpu_mode')!=1):
         raise SystemExit('Host-only GPU preparation requires mode 1')
     if report.get('gpu_mode') and (report['gpu_mode'] not in (1,2,3) or not gpu_runtime or
                                   not report.get('platform_match',{}).get('gui') or
-                                  (not report.get('root_finder_id') and not gpu_hostonly)):
+                                  (not report.get('root_finder_id') and not gpu_hostonly and not gpu_rm_diagnostic)):
         raise SystemExit('GPU mode requires the verified GUI root and GPU firmware')
     gpu_power=check_gpu_power_request((temporary/'kernel.macho.adt').read_bytes(),
         report.get('gpu_mode'),(temporary/'kernel.macho').read_bytes())
@@ -91,6 +99,8 @@ with tempfile.TemporaryDirectory() as directory:
         report.get('gpu_mode'),(temporary/'kernel.macho').read_bytes())
     if gpu_boot_state!=report.get('gpu_boot_state_handoff'):
         raise ValueError('GPU boot state request disagrees with payload metadata')
+    if gpu_rm_diagnostic and not (gpu_boot_state and gpu_gunyah and gpu_power):
+        raise SystemExit('RM diagnostic lacks a fresh boot handoff request')
     if report.get('wifi_pcie_handoff') and not wifi:
         raise SystemExit('PCIe handoff lacks the verified Qualcomm Wi-Fi platform')
     if report.get('wifi_stock_handoff') and not report.get('wifi_cesta_handoff'):
@@ -107,6 +117,9 @@ with tempfile.TemporaryDirectory() as directory:
         print('Embedded ADT matches the built-in platform and CPU drivers')
     config=tomllib.loads((temporary/'unixnu.toml').read_text())
     debug_args=report['kernel_args'].split()
+    if gpu_rm_diagnostic and ('giulia_gpu=3' not in debug_args or 'giulia_ufs_probe=1' not in debug_args or
+                              'vermeer_ufs_rw=1' in debug_args or 'giulia_mmio=1' in debug_args):
+        raise SystemExit('RM diagnostic boot arguments differ from the verified configuration')
     if gpu_hostonly != ('giulia_gpu_hostonly=1' in debug_args):
         raise SystemExit('Host-only GPU boot argument/report mismatch')
     if gpu_hostonly and 'giulia_gpu=1' not in debug_args:

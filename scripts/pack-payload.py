@@ -64,7 +64,16 @@ def main():
     if pr.get('gpu_gunyah_handoff'):
         require(pr.get('gpu_mode') in (1,2,3) and fw_report.get('gpu_gunyah_handoff_available') is True,
                 'GPU Gunyah resources require the matching UEFI capture and loader handoff')
-    if pr.get('gpu_power_handoff'):
+    rm_diagnostic=pr.get('gpu_rm_diagnostic',False)
+    require(type(rm_diagnostic) is bool, 'Invalid RM diagnostic metadata')
+    if rm_diagnostic:
+        require(pr.get('gpu_mode')==3 and pr.get('debug_terminal_enabled') is True and
+                not pr.get('root_finder_id') and not pr.get('gpu_hostonly') and
+                not pr.get('debug_mmio_enabled') and pr.get('gpu_power_handoff') and
+                pr.get('gpu_gunyah_handoff') and pr.get('gpu_boot_state_handoff') and
+                fw_report.get('gpu_power_handoff_available') is False,
+                'RM diagnostic requires rootless debug mode and unavailable firmware GPU preparation')
+    if pr.get('gpu_power_handoff') and not rm_diagnostic:
         require(pr.get('gpu_mode')==3 and fw_report.get('gpu_power_handoff_available') is True,
                 'GPU mode 3 requires the matched GPU prepare protocol and fixed ADT loader')
     if pr.get('wifi_pcie_handoff'):
