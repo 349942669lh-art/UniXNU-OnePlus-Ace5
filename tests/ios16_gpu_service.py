@@ -39,6 +39,7 @@ static void PE_parse_boot_argn(const char *,int *v,size_t){*v=1;}
 #include "giulia_gpu_terminal.h"
 #include "giulia_gpu_power.h"
 #include "giulia_gpu_power_owner.h"
+#include "giulia_gpu_boot_state.h"
 #include "giulia_gpu_gunyah_boot.h"
 #include "giulia_platform_power.h"
 #include "giulia_gpu_hfi.h"
@@ -75,7 +76,15 @@ static void IOSleep(unsigned){std::this_thread::sleep_for(std::chrono::milliseco
 using wait_result_t=int;
 static void *current_thread(){return nullptr;}
 static void thread_terminate(void *){}
-struct IOService {void stop(IOService *){}};
+struct OSData {
+    const void *getBytesNoCopy(){return nullptr;}
+    unsigned getLength(){return 0;}
+};
+#define OSDynamicCast(type,value) static_cast<type *>(value)
+struct IOService {
+    void stop(IOService *){}
+    OSData *getProperty(const char *){return nullptr;}
+};
 /* Only the worker-to-controller boundary is doubled here. The separate
  * power_owner fixture executes the actual resident controller and runtime. */
 static ggpo_status workerPowerStatus={};
@@ -225,7 +234,7 @@ public:
     void stopGunyah(){}
     void hfiCommand(unsigned);
     int gmuCommand(unsigned){++gmuCalls;return 1;} /* IOKit + SID5 prerequisites absent */
-    void reportStatus();void closeTerminal(unsigned);void stop(IOService *);
+    void reportBootState();void reportStatus();void closeTerminal(unsigned);void stop(IOService *);
     static void worker(void *,wait_result_t);
 };
 #include "giulia_gpu_hfi_alloc_impl.h"
@@ -241,6 +250,7 @@ template<class F> static void until(F condition) {
 }
 '''
 for signature in ('extern "C" int giulia_gpu_terminal(',
+                  'void GiuliaGPU::reportBootState(',
                   'void GiuliaGPU::reportStatus(',
                   'void GiuliaGPU::hfiCommand(',
                   'void GiuliaGPU::worker(',
