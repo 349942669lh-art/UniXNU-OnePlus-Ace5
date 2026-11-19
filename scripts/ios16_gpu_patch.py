@@ -30,6 +30,7 @@ def gpu_patch(out, root):
     names = ['GiuliaGPU.cpp', *units, *[p.name for p in sorted((root/'ios16/gpu').glob('giulia_gpu_*.h'))]]
     sources = {name: source_path(root, name).read_text() for name in names}
     sources["giulia_gpu_gunyah_report.h"] = (root/"uefi-overlay/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe/GpuGunyahReport.h").read_text()
+    sources["giulia_gpu_boot_state_report.h"] = (root/"uefi-overlay/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe/GpuBootState.h").read_text()
     for path in sorted((root/'ios16/vendor/ArmSmmu4K').glob('*')):
         if path.name.startswith('test_') or (path.suffix not in ('.c','.h') and path.name not in ('LICENSE','SOURCE.json')): continue
         sources['vendor/ArmSmmu4K/'+path.name] = path.read_text()

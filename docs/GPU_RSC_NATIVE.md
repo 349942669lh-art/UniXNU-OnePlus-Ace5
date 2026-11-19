@@ -80,7 +80,7 @@ flow, every authority boundary, unchanged/uncertain grants, invalid readback,
 source-table/config copying, inherited state, incomplete transactions,
 settlement gating, timeouts and close/revoke races. These are NOT hardware tests.
 
-The post-link checker requires eight new native executable definitions and the
+The post-link checker requires nine native executable definitions and the
 native marker, in addition to the previous 89 definitions. Source/object and
 ISA checks do not replace a full kernel link or an actual device qualification.
 

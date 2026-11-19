@@ -15,7 +15,9 @@ trust_input="$(realpath "$6")"
 gpu_pack="$(realpath "$7")"
 output_dir="$(realpath -m "$8")"
 gpu_mode="${GIULIA_GPU_MODE:-1}"
+gpu_boot_state="${GIULIA_GPU_BOOT_STATE:-0}"
 case "$gpu_mode" in 1|2|3) ;; *) echo 'GIULIA_GPU_MODE must be 1, 2 or 3' >&2; exit 2;; esac
+case "$gpu_boot_state" in 0|1) ;; *) echo 'GIULIA_GPU_BOOT_STATE must be 0 or 1' >&2; exit 2;; esac
 driver_dir="$uefi_root/UniXNU/drivers/DarwinBoot/DarwinBootPkg/Driver"
 board_driver="$uefi_root/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe"
 test ! -e "$output_dir"
@@ -41,6 +43,18 @@ else
   cp "$adt_input" "$output_dir/giulia-ios16.adt"
 fi
 cp -a uefi-overlay/Platforms/OnePlus/giuliaPkg/Drivers/GiuliaInitrdDxe/. "$board_driver/"
+if [ "$gpu_boot_state" = 1 ]; then
+  python3 scripts/verify-gpu-boot-state-abi.py --uefi "$uefi_root" > "$output_dir/gpu-boot-state-abi.json"
+  python3 scripts/enable-gpu-boot-state.py "$driver_dir"
+  python3 - "$output_dir/giulia-ios16.adt" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0,'scripts')
+from ios16_gpu_boot_state import add_request
+path=Path(sys.argv[1])
+path.write_bytes(add_request(path.read_bytes()))
+PY
+fi
 python3 scripts/enable-touch-diagnostics.py "$driver_dir"
 if [ "$gpu_mode" = 3 ]; then
   python3 scripts/enable-gpu-power-diagnostics.py "$driver_dir"

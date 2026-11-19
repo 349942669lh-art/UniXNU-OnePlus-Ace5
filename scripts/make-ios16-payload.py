@@ -17,6 +17,7 @@ from ios16_gpu_runtime import check_runtime as check_gpu_runtime
 from ios16_audio_runtime import check_runtime as check_audio_runtime
 from ios16_modem import check_contract as check_modem_contract
 from ios16_gpu_power import check_request as check_gpu_power_request
+from ios16_gpu_boot_state import check_request as check_gpu_boot_state_request
 from ios16_gpu_gunyah import check_request as check_gpu_gunyah_request
 from ios16_trust_catalog import modules
 
@@ -73,6 +74,7 @@ def main():
     if a.audio_prepare and (not audio_runtime or not a.root_report or not platform_match.get('gui')):
         raise ValueError('Audio preparation requires a GUI root and matching embedded audio firmware')
     gpu_power=check_gpu_power_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
+    gpu_boot_state=check_gpu_boot_state_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
     gpu_gunyah=check_gpu_gunyah_request(a.adt.read_bytes(),a.gpu_mode,a.kernel.read_bytes())
     if a.gpu_mode and (not gpu_runtime or not platform_match.get('gui') or
                        (not a.root_report and not a.gpu_hostonly)):
@@ -218,6 +220,7 @@ def main():
     if a.gpu_mode:result['gpu_mode']=a.gpu_mode
     if a.gpu_hostonly:result['gpu_hostonly']=True
     if gpu_power:result['gpu_power_handoff']=gpu_power
+    if gpu_boot_state:result['gpu_boot_state_handoff']=gpu_boot_state
     if gpu_gunyah:result['gpu_gunyah_handoff']=gpu_gunyah
     if a.wifi_pcie:
         result['wifi_pcie_handoff']=True

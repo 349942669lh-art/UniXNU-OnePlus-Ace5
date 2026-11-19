@@ -36,13 +36,16 @@ def check_request(blob, mode=None, kernel=None):
             'gmu_execution': False, 'acceleration': False}
 
 
-def add_request(blob):
+def add_chosen_request(blob, property_name, request):
+    if len(request) != REPORT_BYTES or not property_name or len(property_name) > 31 or '\0' in property_name:
+        raise ValueError('Invalid fixed GPU chosen request')
+    property_name.encode('ascii')
     nodes = read_nodes(blob)
     if len(blob) > 16 * 1024**2:
         raise ValueError('GPU ADT exceeds the loader limit')
     if nodes.get('/device-tree', {}).get('physical-model') != b'OnePlus Ace 5\0':
         raise ValueError('GPU power request requires the Ace 5 GUI identity')
-    if any(PROPERTY in props for props in nodes.values()):
+    if any(property_name in props for props in nodes.values()):
         raise ValueError('Refusing to overwrite an existing GPU power request or result')
     if '/device-tree/chosen' not in nodes:
         raise ValueError('GPU power request requires chosen')
@@ -73,13 +76,20 @@ def add_request(blob):
     start, properties, end = found
     if properties == 0xffffffff:
         raise ValueError('Chosen property count overflow')
-    record = struct.pack('<32sI', PROPERTY.encode(), REPORT_BYTES) + placeholder()
+    record = struct.pack('<32sI', property_name.encode(), REPORT_BYTES) + request
     out = bytearray(blob[:end] + record + blob[end:])
     struct.pack_into('<I', out, start, properties + 1)
     result = bytes(out)
-    check_request(result, 3)
     actual = read_nodes(result)
-    del actual['/device-tree/chosen'][PROPERTY]
+    if actual['/device-tree/chosen'].get(property_name) != request:
+        raise ValueError('GPU chosen request failed its round trip')
+    del actual['/device-tree/chosen'][property_name]
     if actual != nodes:
         raise ValueError('GPU request changed unrelated ADT data')
+    return result
+
+
+def add_request(blob):
+    result = add_chosen_request(blob, PROPERTY, placeholder())
+    check_request(result, 3)
     return result

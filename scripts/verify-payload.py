@@ -14,6 +14,7 @@ from ios16_gpu_runtime import check_runtime as check_gpu_runtime
 from ios16_audio_runtime import check_runtime as check_audio_runtime
 from ios16_modem import check_contract as check_modem_contract, metadata_from_runtime
 from ios16_gpu_power import check_request as check_gpu_power_request
+from ios16_gpu_boot_state import check_request as check_gpu_boot_state_request
 from ios16_gpu_gunyah import check_request as check_gpu_gunyah_request
 from ios16_trust_catalog import modules
 
@@ -86,6 +87,10 @@ with tempfile.TemporaryDirectory() as directory:
         report.get('gpu_mode'),(temporary/'kernel.macho').read_bytes())
     if gpu_gunyah!=report.get('gpu_gunyah_handoff'):
         raise SystemExit('Gunyah boot request differs from the embedded ADT/kernel/report')
+    gpu_boot_state=check_gpu_boot_state_request((temporary/'kernel.macho.adt').read_bytes(),
+        report.get('gpu_mode'),(temporary/'kernel.macho').read_bytes())
+    if gpu_boot_state!=report.get('gpu_boot_state_handoff'):
+        raise ValueError('GPU boot state request disagrees with payload metadata')
     if report.get('wifi_pcie_handoff') and not wifi:
         raise SystemExit('PCIe handoff lacks the verified Qualcomm Wi-Fi platform')
     if report.get('wifi_stock_handoff') and not report.get('wifi_cesta_handoff'):

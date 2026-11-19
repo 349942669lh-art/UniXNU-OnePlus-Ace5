@@ -24,6 +24,7 @@
 #include <kern/clock.h>
 extern "C" { extern unsigned long gPhysBase, gPhysSize, gVirtBase; }
 #include "giulia_gpu_pack.h"
+#include "giulia_gpu_boot_state.h"
 #include "giulia_gpu_memory.h"
 #include "giulia_gpu_cache.h"
 #include "giulia_gpu_hfi.h"
@@ -280,6 +281,8 @@ class GiuliaGPU : public IOService {
     bool loadFirmware(struct gg_pack *pack);
     bool prepareMemory(const struct gg_pack *pack);
     void readPowerHandoff();
+    void readBootState();
+    void reportBootState();
     void observePower();
     void reportStatus();
     void hfiCommand(unsigned);
@@ -659,6 +662,7 @@ bool GiuliaGPU::start(IOService *provider)
     __atomic_store_n(&gpuTerminal.stage,(unsigned)GGT_PREPARING,__ATOMIC_RELEASE);
     /* Preserve firmware diagnostics even if subsequent RAM preparation fails. */
     readGunyahHandoff();
+    readBootState();
     if(mode==3)readPowerHandoff();
     struct gg_pack pack={};
     if (!loadFirmware(&pack) || !prepareMemory(&pack)) {
@@ -701,6 +705,38 @@ void GiuliaGPU::readGunyahHandoff()
     if(bootGunyahCaptured)setProperty("BootGunyahResourceReport",&bootGunyah,sizeof(bootGunyah));
     IOLog("GIULIA GPU: boot Gunyah resources captured=%u epoch=%#llx fdt_bytes=%u irq_lease=0 hypervisor_verified=0 provider_ready=0\n",
         bootGunyahCaptured,(unsigned long long)bootGunyah.epoch,bootGunyah.fdt_bytes);
+}
+
+void GiuliaGPU::readBootState()
+{
+    IORegistryEntry *chosen=IORegistryEntry::fromPath("/chosen",gIODTPlane);
+    OSData *data=chosen?OSDynamicCast(OSData,chosen->getProperty(GBS_PROPERTY)):NULL;
+    struct gbs_report report={};
+    bool valid=gbs_decode(data?data->getBytesNoCopy():NULL,data?data->getLength():0,&report)!=0;
+    if(chosen)chosen->release();
+    setProperty("BootPowerStateValid",valid);
+    if(valid)setProperty("BootPowerState",&report,sizeof(report));
+    reportBootState();
+}
+
+void GiuliaGPU::reportBootState()
+{
+    OSData *data=OSDynamicCast(OSData,getProperty("BootPowerState"));
+    struct gbs_report report={};
+    bool valid=gbs_decode(data?data->getBytesNoCopy():NULL,data?data->getLength():0,&report)!=0;
+    IOLog("GIULIA GPU BOOT: valid=%u phase=%u code=%u flags=%#x rails=%u status=%#llx grant=0\n",
+        valid,report.phase,report.code,report.flags,report.rail_count,(unsigned long long)report.status);
+    if(!valid)return;
+    IOLog("GIULIA GPU BOOT: captured=%#llx ebs_returned=%#llx frequency=%llu drv=%u\n",
+        (unsigned long long)report.capture_ticks,(unsigned long long)report.ebs_ticks,
+        (unsigned long long)report.counter_frequency,report.drv_id);
+    for(unsigned i=0;i<report.rail_count;i++) {
+        const struct gbs_rail *rail=&report.rail[i];
+        IOLog("GIULIA GPU BOOT: rail=%u address=%#x slave=%u levels=%u selector=%u cache_valid=%u cache_code=%u\n",
+            i,rail->address,rail->slave,rail->level_count,rail->cached_selector,rail->cached_valid,rail->cache_code);
+        for(unsigned j=0;j<rail->level_count && j<16;j++)
+            IOLog("GIULIA GPU BOOT: rail=%u selector=%u logical=%u\n",i,j,rail->levels[j]);
+    }
 }
 
 void GiuliaGPU::readPowerHandoff()
@@ -752,6 +788,7 @@ void GiuliaGPU::observePower()
 
 void GiuliaGPU::reportStatus()
 {
+    reportBootState();
     /* The target IOLog formatter has a 256-byte buffer. Keep each record
      * independently bounded so a truncated line cannot erase readiness. */
     IOLog("GIULIA GPU: command=gpu.status stage=%s mode=%u firmware_verified=%u host_prepared=%u reservations=%u table_pages=%u leaf_pages=%u\n",

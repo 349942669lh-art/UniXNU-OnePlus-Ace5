@@ -54,6 +54,7 @@ def kernel_source(text):
                   r'#include "\1"', text)
     text = text.replace('"../vendor/', '"vendor/')
     for report, target in (('GpuPowerReport.h', 'giulia_platform_power_report.h'),
+                           ('GpuBootState.h', 'giulia_gpu_boot_state_report.h'),
                            ('GpuGunyahReport.h', 'giulia_gpu_gunyah_report.h')):
         text = re.sub(r'"(?:\.\./)+uefi-overlay/[^"\n]+/' + report + '"',
                       '"' + target + '"', text)
