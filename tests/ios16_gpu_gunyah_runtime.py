@@ -198,6 +198,12 @@ extern "C" int ggown_bootstrap(struct ggown_state *owner,unsigned timeout) {
     if(bootstrapResult==GGOWN_OK){owner->stage=GGOWN_CHANNEL;owner->bootstrapped=1;}
     return bootstrapResult;
 }
+extern "C" int ggown_query_self(struct ggown_state *owner,unsigned timeout) {
+    ++bootstraps;lastTimeout=timeout;GiuliaGPU *s=published(owner);
+    if(!owner->policy.live(s,owner->epoch))return GGOWN_LOST;
+    owner->self_attempted=1;
+    return bootstrapResult;
+}
 extern "C" int ggown_poll(struct ggown_state *owner,unsigned budget,unsigned timeout) {
     ++polls;lastBudget=budget;lastTimeout=timeout;GiuliaGPU *s=published(owner);
     return owner->policy.live(s,owner->epoch)?pollResult:GGOWN_LOST;
@@ -271,11 +277,11 @@ static void policy_and_callbacks() {
 }
 static void commands() {
     reset();GiuliaGPU s;setup(s);
-    const uint32_t bad[][4]={{5,0,0,0},{0,1,0,0},{0,0,1,0},{1,0,0,0},{1,3001,0,0},
+    const uint32_t bad[][4]={{6,0,0,0},{5,0,0,0},{5,3001,0,0},{5,1,1,0},{0,1,0,0},{0,0,1,0},{1,0,0,0},{1,3001,0,0},
         {1,1,1,0},{2,0,1,0},{2,GGRS_MAX_POLL_FRAMES+1,1,0},{2,1,0,0},{2,1,3001,0},
         {3,0,0,0},{3,3001,0,0},{3,1,1,0},{4,1,0,0},{4,0,1,0}};
     for(const auto &args:bad)assert(s.gunyahCommand(args[0],args[1],args[2],args[3])==4);
-    for(unsigned action=0;action<=4;action++)assert(s.gunyahCommand(action,1,1,1)==4);
+    for(unsigned action=0;action<=5;action++)assert(s.gunyahCommand(action,1,1,1)==4);
     assert(!allocs && !inits && !nativeCalls());
     assert(s.gunyahCommand(2,1,1,0)==7 && s.gunyahCommand(4,0,0,0)==7);
     assert(s.gunyahCommand(1,3000,0,0)==0 && lastTimeout==3000000 && probes==1);
@@ -284,6 +290,7 @@ static void commands() {
     statusResult=GGOWN_BUSY;assert(s.gunyahCommand(0,0,0,0)==5 && nativeCalls()==native);statusResult=GGOWN_OK;
     assert(s.gunyahCommand(2,GGRS_MAX_POLL_FRAMES,3000,0)==0 && lastBudget==GGRS_MAX_POLL_FRAMES && lastTimeout==3000000);
     assert(s.gunyahCommand(3,1,0,0)==0 && bootstraps==1 && lastTimeout==1000);
+    assert(s.gunyahCommand(5,23,0,0)==0 && bootstraps==2 && lastTimeout==23000);
     assert(s.gunyahCommand(4,0,0,0)==0 && invalidates==1 && !frees && s.references==2);
     s.stopGunyah();assert(s.gunyahStopLatch && !frees && s.references==2);
     assert(s.gunyahCommand(0,0,0,0)==0 && !frees); // Status remains historical after stop.

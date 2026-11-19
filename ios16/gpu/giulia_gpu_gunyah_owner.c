@@ -238,6 +238,28 @@ int ggown_bootstrap(struct ggown_state *s,unsigned timeout_us)
     result=ggown_boot(s);
     return result?ggown_fail(s,(unsigned)result):ggown_leave(s,GGOWN_OK);
 }
+int ggown_query_self(struct ggown_state *s,unsigned timeout_us)
+{
+    int result=ggown_enter(s);if(result)return result;
+    if(s->self_attempted || s->session.attempted || s->session.rm.busy)
+        return ggown_leave(s,ggown_lost(s)?GGOWN_LOST:GGOWN_USED);
+    result=ggown_start(s,timeout_us);
+    if(result==GGOWN_ARGUMENT)return ggown_leave(s,(unsigned)result);
+    if(result)return ggown_fail(s,(unsigned)result);
+    s->self_attempted=1;
+    result=ggown_boot(s);if(result)return ggown_fail(s,(unsigned)result);
+    if(!ggown_valid(s,s->epoch))return ggown_fail(s,GGOWN_LOST);
+    s->self_rpc_result=(unsigned)ggrm_call(&s->io,&s->session.rm,
+        GGRQ_VM_GET_VMID,NULL,0,timeout_us);
+    s->self_remote_error=s->session.rm.reply.error;
+    if(s->self_rpc_result!=GGRM_OK)return ggown_fail(s,GGOWN_SESSION);
+    uint16_t vmid=0;
+    if(gg_rq_parse_self(s->session.rm.reply.data,s->session.rm.reply.bytes,&vmid))
+        return ggown_fail(s,GGOWN_SESSION);
+    if(!ggown_valid(s,s->epoch))return ggown_fail(s,GGOWN_LOST);
+    s->self_vmid=vmid;s->self_observed=1;
+    return ggown_leave(s,GGOWN_OK);
+}
 int ggown_probe(struct ggown_state *s,unsigned timeout_us)
 {
     int result=ggown_enter(s);if(result)return result;
@@ -292,7 +314,8 @@ int ggown_get_status(struct ggown_state *s,struct ggown_status *out)
         __atomic_load_n(&s->session.loss_pending,__ATOMIC_ACQUIRE),
         s->stage,s->last_result,s->probe_result,s->session_result,
         s->session.snapshot.step,s->session.rm.next_sequence,s->session.rm.quarantined,
-        s->hvc_calls,s->epoch,native_code,s->compatibility.identify.x[0]};
+        s->hvc_calls,s->epoch,native_code,s->compatibility.identify.x[0],
+        s->self_attempted,s->self_observed,s->self_vmid,s->self_rpc_result,s->self_remote_error};
     __atomic_store_n(&s->busy,0u,__ATOMIC_RELEASE);*out=status;return GGOWN_OK;
 }
 int ggown_get_channel(struct ggown_state *s,struct ggrm_io *out,struct ggrm_state **channel)

@@ -30,6 +30,7 @@ struct ggown_status {
     unsigned stage,last_result,probe_result,session_result,query_step;
     unsigned next_sequence,rm_quarantined,hvc_calls;
     uint64_t epoch,native_code,api_info;
+    unsigned self_attempted,self_observed,self_vmid,self_rpc_result,self_remote_error;
 };
 /* Allocate/zero this large object on the heap. Pin the object, its callback
  * code/cookies, and the IOService owner until reboot, even after failure.
@@ -45,6 +46,7 @@ struct ggown_state {
     unsigned compatible,irq_claimed,guard_active,guard_open,stage,last_result;
     unsigned probe_result,session_result,hvc_calls,timing,time_failed,timeout_us;
     uint64_t epoch,start_us,last_us;
+    unsigned self_attempted,self_observed,self_vmid,self_rpc_result,self_remote_error;
     uint32_t tx_intid,rx_intid;
     struct ggr_report report;
     struct ggown_policy policy;
@@ -59,6 +61,12 @@ int ggown_init(struct ggown_state *,const struct ggr_report *,const struct ggown
 /* Bootstrap claims IRQs, guards the canonical UID/API probe and initializes
  * one RM sequence space. It performs no RM query, memory lookup or share. */
 int ggown_bootstrap(struct ggown_state *,unsigned timeout_us);
+/* One fixed VM_GET_VMID request on the same serialized RM stream. May
+ * bootstrap first. Preserves sequence numbering for later discovery.
+ * The historical identity is reported through get_status, independently
+ * of peer discovery, parcel lookup and every GPU resource assignment.
+ * Failure retains the channel and invalidates the owner until reset. */
+int ggown_query_self(struct ggown_state *,unsigned timeout_us);
 /* If needed, bootstrap and all seven discovery queries share one deadline.
  * An explicit later probe after bootstrap uses the existing RM sequence.
  * Query failure, including a missing parcel, quarantines this attempt. */

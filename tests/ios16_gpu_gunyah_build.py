@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='gpu-gunyah-build-') as directory:
             for symbol in ('init', 'run', 'invalidate'):
                 assert re.search(r'^_ggsh_' + symbol + r':', assembly, re.M)
         else:
-            for symbol in ('init', 'bootstrap', 'probe', 'poll', 'copy_snapshot', 'get_status', 'get_channel', 'invalidate'):
+            for symbol in ('init', 'bootstrap', 'query_self', 'probe', 'poll', 'copy_snapshot', 'get_status', 'get_channel', 'invalidate'):
                 assert re.search(r'^_ggown_' + symbol + r':', assembly, re.M)
         subprocess.run(['clang', '--target=aarch64-none-elf', '-ffreestanding',
                         '-std=c11', '-Wall', '-Wextra', '-Werror', '-O2',

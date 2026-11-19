@@ -67,7 +67,7 @@ SYMBOLS = tuple('_giulia_gpu_' + name for name in (
       '_giulia_gpu_gunyah_irq_guard_begin','_giulia_gpu_gunyah_irq_guard_end',
       '_giulia_gpu_gunyah_irq_invalidate','_giulia_gpu_gunyah_irq_dispatch',
       '_giulia_gpu_gunyah_irq_handler_registered','_giulia_gpu_gunyah_irq_controller_changed',
-      '_ggown_init','_ggown_bootstrap','_ggown_probe','_ggown_poll',
+      '_ggown_init','_ggown_bootstrap','_ggown_query_self','_ggown_probe','_ggown_poll',
       '_ggown_copy_snapshot','_ggown_get_status','_ggown_get_channel','_ggown_invalidate',
       '_giulia_gpu_runtime_acquire','_giulia_gpu_runtime_live',
       '_giulia_gpu_runtime_dma','_giulia_gpu_runtime_drain',

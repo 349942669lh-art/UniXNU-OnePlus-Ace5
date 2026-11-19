@@ -158,6 +158,24 @@ parcel、动态 participant 和显式 mem_info_tag。
 
 ## HVC 与 doorbell
 
+### 独立查询本次启动的 VM 身份
+
+`ggown_query_self` 在现有独占通道和 owning worker 上执行一次固定
+`VM_GET_VMID`。该入口复用 UID/API 检查、IRQ guard、RM 接收器和序号空间。
+需要时先执行 bootstrap。整个调用使用一个单调截止时间。
+
+该查询独立于 peer、parcel 和 fence 的七步 discovery，允许在供电接管前
+取得候选启动的真实 self VMID。后续完整 discovery 继续使用递增序号。
+查询失败后保留通道并使 owner 失效至 reset，禁止重试。
+
+已有 DEV 调度中的 action 5 接入该入口，参数 b 为 1 至 3000 毫秒。
+`gpu.dev 1 22 5 1000 0 0` 请求查询，action 0 报告 `self_attempted`、
+`self_observed`、`self_vmid`、RPC 结果和远端错误。结果保留历史属性，
+需要结合 owner 的 invalid 状态理解。GPU 资源授权仍由平台 source 提供。
+
+该入口沿用已有 worker、内存固定及启动模式条件。host-only 和 power-only
+入口继续拒绝全部 DEV 调度。状态命令只读取 CPU 缓存结果。
+
 canonical MSGQ 使用 `hvc #0`，固定 function ID 为 `0xc600801b/c`。
 发送和接收均使用私有 scratch buffer，接收仅在成功且租约仍有效时
 发布输出，失败保留调用者数据。

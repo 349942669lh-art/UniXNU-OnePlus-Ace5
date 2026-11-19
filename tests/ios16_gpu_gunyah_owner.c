@@ -23,7 +23,7 @@ struct fixture {
     unsigned loss_hvc_at,stop_hvc_at,late_hvc_at,late_stage,rewind_stage;
     unsigned notify_step,notified,poll_left,poll_peer,reenter,late_delay,stop_delay;
     unsigned external,pending_external,external_calls;
-    unsigned last_rx;
+    unsigned last_rx,self_reply_bad;
     unsigned live_checks,loss_live_at,init_reenter,stop_notification,delay_error,stop_ready;
     uint8_t before_rx[240];
 };
@@ -197,7 +197,13 @@ static size_t receive_payload(uint8_t *p)
     }
     put32(p+4,f.pending_external?GGRQ_VM_GET_VMID:ids[step-1]);size_t n=16;
     switch(step) {
-    case 1:p[12]=0x45;break;
+    case 1:
+        p[12]=0x45;
+        if(f.self_reply_bad==1)p[12]=0;
+        if(f.self_reply_bad==2)p[14]=1;
+        if(f.self_reply_bad==3)put32(p+8,14);
+        if(f.self_reply_bad==4)n=15;
+        break;
     case 2:p[12]=1;p[16]=0x73;n=20;break;
     case 3: {
         const uint8_t identity[]={1,0,0,0,2,0,13,0,
@@ -305,6 +311,50 @@ static void bootstrap_and_borrow(void)
     assert(!io.valid(io.cookie,f.epoch) && io.send(io.cookie,frame,sizeof(frame),1)<0 && f.hvcs==2);
     assert(ggown_probe(f.s,100000)!=GGOWN_OK && f.hvcs==2);failed();cleanup();
 }
+static void self_identity(void)
+{
+    start();f.external=1;
+    assert(ggown_query_self(f.s,0)==GGOWN_ARGUMENT && !f.hvcs && !f.s->self_attempted);
+    assert(ggown_query_self(f.s,1000000)==GGOWN_OK);
+    assert(f.hvcs==4 && f.external_calls==1 && !f.queries);
+    assert(f.s->session.rm.next_sequence==1 && !f.s->session.attempted);
+    struct ggown_status status;
+    assert(ggown_get_status(f.s,&status)==GGOWN_OK);
+    assert(status.self_attempted && status.self_observed && status.self_vmid==0x45);
+    assert(!status.self_rpc_result && !status.self_remote_error && !status.invalid);
+    unsigned calls=f.hvcs;
+    assert(ggown_query_self(f.s,1000000)==GGOWN_USED && f.hvcs==calls);
+    f.external=0;
+    assert(ggown_probe(f.s,1000000)==GGOWN_OK && f.queries==7);
+    assert(f.s->session.rm.next_sequence==8);
+    assert(ggown_invalidate(f.s)==GGOWN_LOST);
+    assert(ggown_get_status(f.s,&status)==GGOWN_OK && status.invalid);
+    assert(status.self_observed && status.self_vmid==0x45);
+    failed();cleanup();
+    for(unsigned mode=1;mode<=4;mode++) {
+        start();f.external=1;f.self_reply_bad=mode;
+        assert(ggown_query_self(f.s,1000000)==GGOWN_SESSION);
+        assert(ggown_get_status(f.s,&status)==GGOWN_OK);
+        assert(status.self_attempted && !status.self_observed && !status.self_vmid);
+        if(mode==3)assert(status.self_rpc_result==GGRM_REMOTE && status.self_remote_error==14);
+        calls=f.hvcs;
+        assert(ggown_query_self(f.s,1000000)!=GGOWN_OK && f.hvcs==calls);
+        failed();cleanup();
+    }
+    for(unsigned at=1;at<=4;at++)for(unsigned mode=0;mode<3;mode++) {
+        start();f.external=1;
+        if(mode==0)f.loss_hvc_at=at;
+        if(mode==1)f.stop_hvc_at=at;
+        if(mode==2)f.late_hvc_at=at;
+        assert(ggown_query_self(f.s,1000000)!=GGOWN_OK && f.hvcs==at);
+        assert(!f.s->self_observed && !f.s->self_vmid);
+        failed();cleanup();
+    }
+    start();assert(ggown_probe(f.s,1000000)==GGOWN_OK);
+    calls=f.hvcs;
+    assert(ggown_query_self(f.s,1000000)==GGOWN_USED && f.hvcs==calls);
+    cleanup();
+}
 static void boot_and_guard_failures(void)
 {
     for(unsigned mode=0;mode<5;mode++) {
@@ -398,7 +448,7 @@ static void arguments_and_policy(void)
 }
 int main(void)
 {
-    normal_and_poll();bootstrap_and_borrow();boot_and_guard_failures();
+    normal_and_poll();bootstrap_and_borrow();self_identity();boot_and_guard_failures();
     transport_and_stop();arguments_and_policy();
     puts("GPU Gunyah native owner: real HVC/RM/session bridge, IRQ guards, boot policy, staged output, sequence borrowing, stop and failures passed (platform/HVC mocks only)");
     return 0;
